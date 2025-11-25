@@ -39,6 +39,12 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/rps [choice]`: Play Rock, Paper, Scissors against the bot.
 -   `/choose [options]`: Let the bot choose from a list of comma-separated options.
 
+### VoiceMaster / Join to Create
+-   **Automatic Channel Management**: Join the "Join to Create" channel to get your own temporary voice channel. It deletes itself when empty.
+-   **Control Panel**: A menu with buttons appears in your temporary channel's chat to easily Lock, Unlock, Rename, and Limit your channel.
+-   `/voice_setup`: (Admin) Creates the "Join to Create" hub channel and category.
+-   `/voice_setname [name]`: Set your preferred default name for your temporary channels (supports `{user}` placeholder).
+
 ## Setup
 
 1.  **Clone the repository**:
