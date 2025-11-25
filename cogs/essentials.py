@@ -49,5 +49,39 @@ class Essentials(commands.Cog):
         embed.add_field(name="Ping", value=f"{round(self.bot.latency * 1000)}ms", inline=True)
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="userinfo", description="Shows information about a member")
+    @app_commands.describe(member="The member to get info for")
+    async def userinfo(self, interaction: discord.Interaction, member: discord.Member = None):
+        member = member or interaction.user
+        roles = [role.mention for role in member.roles if role != interaction.guild.default_role]
+        embed = discord.Embed(title=f"User Info - {member.name}", color=member.color)
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.add_field(name="ID", value=member.id, inline=True)
+        embed.add_field(name="Nickname", value=member.nick, inline=True)
+        embed.add_field(name="Created At", value=member.created_at.strftime("%Y-%m-%d %H:%M:%S"), inline=False)
+        embed.add_field(name="Joined At", value=member.joined_at.strftime("%Y-%m-%d %H:%M:%S"), inline=False)
+        embed.add_field(name=f"Roles ({len(roles)})", value=" ".join(roles) if roles else "None", inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="serverinfo", description="Shows information about the server")
+    async def serverinfo(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        embed = discord.Embed(title=f"Server Info - {guild.name}", color=discord.Color.gold())
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        embed.add_field(name="Owner", value=guild.owner.mention, inline=True)
+        embed.add_field(name="ID", value=guild.id, inline=True)
+        embed.add_field(name="Members", value=guild.member_count, inline=True)
+        embed.add_field(name="Created At", value=guild.created_at.strftime("%Y-%m-%d %H:%M:%S"), inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="avatar", description="Displays a user's avatar")
+    @app_commands.describe(member="The member to get avatar for")
+    async def avatar(self, interaction: discord.Interaction, member: discord.Member = None):
+        member = member or interaction.user
+        embed = discord.Embed(title=f"{member.name}'s Avatar", color=member.color)
+        embed.set_image(url=member.display_avatar.url)
+        await interaction.response.send_message(embed=embed)
+
 async def setup(bot):
     await bot.add_cog(Essentials(bot))

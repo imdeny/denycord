@@ -13,15 +13,30 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 ### Essentials
 -   `/ping`: Check the bot's latency with a fun, random location response! 🏓
 -   `/info`: View detailed information about the bot.
+-   `/userinfo [member]`: View detailed information about a member.
+-   `/serverinfo`: View detailed information about the server.
+-   `/avatar [member]`: View a member's avatar in high resolution.
 
 ### Moderation
 -   `/kick [member] [reason]`: Kick a user from the server.
 -   `/ban [member] [reason]`: Ban a user from the server.
+-   `/unban [user_id] [reason]`: Unban a user by their ID.
+-   `/timeout [member] [duration] [reason]`: Timeout a member for a specified duration (in minutes).
+-   `/untimeout [member] [reason]`: Remove a timeout from a member.
+-   `/lock`: Lock the current channel (prevent sending messages).
+-   `/unlock`: Unlock the current channel.
+-   `/slowmode [seconds]`: Set the slowmode delay for the current channel.
+-   `/setnick [member] [nickname]`: Change a member's nickname.
+-   `/addrole [member] [role]`: Add a role to a member.
+-   `/removerole [member] [role]`: Remove a role from a member.
 -   `/clear [amount]`: Bulk delete messages in the current channel.
 
 ### Fun
 -   `/coinflip`: Flip a coin (Heads or Tails).
 -   `/roll [sides]`: Roll a dice with a custom number of sides (default 6).
+-   `/8ball [question]`: Ask the magic 8-ball a question.
+-   `/rps [choice]`: Play Rock, Paper, Scissors against the bot.
+-   `/choose [options]`: Let the bot choose from a list of comma-separated options.
 
 ## Setup
 
