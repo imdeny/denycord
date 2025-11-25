@@ -25,7 +25,8 @@ class MyBot(commands.Bot):
         initial_extensions = [
             'cogs.essentials',
             'cogs.moderation',
-            'cogs.fun'
+            'cogs.fun',
+            'cogs.voice'
         ]
         
         for extension in initial_extensions:
