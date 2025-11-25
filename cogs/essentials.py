@@ -98,5 +98,20 @@ class Essentials(commands.Cog):
         embed.set_image(url=member.display_avatar.url)
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="help", description="Shows a list of all available commands")
+    async def help(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="Help - Commands", description="List of all available commands sorted by category.", color=discord.Color.green())
+        
+        for cog_name, cog in self.bot.cogs.items():
+            commands_list = []
+            # Get app commands from the cog
+            for command in cog.walk_app_commands():
+                commands_list.append(f"`/{command.name}`: {command.description}")
+            
+            if commands_list:
+                embed.add_field(name=cog_name, value="\n".join(commands_list), inline=False)
+        
+        await interaction.response.send_message(embed=embed)
+
 async def setup(bot):
     await bot.add_cog(Essentials(bot))

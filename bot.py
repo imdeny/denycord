@@ -44,6 +44,7 @@ class MyBot(commands.Bot):
             print(f'Failed to sync commands: {e}')
 
     async def on_ready(self):
+        await self.change_presence(activity=discord.CustomActivity(name="Watching channels - /help"))
         print(f'{self.user} has connected to Discord!')
 
 bot = MyBot()

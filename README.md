@@ -16,6 +16,7 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/userinfo [member]`: View detailed information about a member.
 -   `/serverinfo`: View detailed information about the server.
 -   `/avatar [member]`: View a member's avatar in high resolution.
+-   `/help`: View a list of all available commands sorted by category.
 
 ### Moderation
 -   `/kick [member] [reason]`: Kick a user from the server.
