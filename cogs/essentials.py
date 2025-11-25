@@ -2,10 +2,14 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import random
+import platform
+import time
+from datetime import timedelta
 
 class Essentials(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.start_time = time.time()
         self.locations = [
             "the US Space Station",
             "the Matrix Mainframe",
@@ -45,8 +49,19 @@ class Essentials(commands.Cog):
 
     @app_commands.command(name="info", description="Shows information about the bot")
     async def info(self, interaction: discord.Interaction):
+        current_time = time.time()
+        uptime_seconds = int(current_time - self.start_time)
+        uptime = str(timedelta(seconds=uptime_seconds))
+        
         embed = discord.Embed(title="Bot Information", description="A comprehensive server bot.", color=discord.Color.blue())
+        embed.add_field(name="Developer", value="Antigravity", inline=True)
+        embed.add_field(name="Uptime", value=uptime, inline=True)
         embed.add_field(name="Ping", value=f"{round(self.bot.latency * 1000)}ms", inline=True)
+        embed.add_field(name="Python Version", value=platform.python_version(), inline=True)
+        embed.add_field(name="Discord.py Version", value=discord.__version__, inline=True)
+        embed.add_field(name="Servers", value=str(len(self.bot.guilds)), inline=True)
+        embed.add_field(name="Users", value=str(sum(guild.member_count for guild in self.bot.guilds)), inline=True)
+        
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="userinfo", description="Shows information about a member")

@@ -12,7 +12,7 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 
 ### Essentials
 -   `/ping`: Check the bot's latency with a fun, random location response! 🏓
--   `/info`: View detailed information about the bot.
+-   `/info`: View bot stats (uptime, server count, versions).
 -   `/userinfo [member]`: View detailed information about a member.
 -   `/serverinfo`: View detailed information about the server.
 -   `/avatar [member]`: View a member's avatar in high resolution.
