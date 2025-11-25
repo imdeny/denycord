@@ -16,16 +16,37 @@ if not TOKEN:
 intents = discord.Intents.default()
 intents.message_content = True
 
-# Setup bot
-bot = commands.Bot(command_prefix='!', intents=intents)
+class MyBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix='!', intents=intents)
 
-@bot.event
-async def on_ready():
-    print(f'{bot.user} has connected to Discord!')
+    async def setup_hook(self):
+        # Load cogs
+        initial_extensions = [
+            'cogs.essentials',
+            'cogs.moderation',
+            'cogs.fun'
+        ]
+        
+        for extension in initial_extensions:
+            try:
+                await self.load_extension(extension)
+                print(f'Loaded extension {extension}')
+            except Exception as e:
+                print(f'Failed to load extension {extension}.', e)
 
-@bot.command(name='ping')
-async def ping(ctx):
-    await ctx.send('Pong!')
+        # Sync commands globally
+        # Note: Global sync can take up to an hour. For development, sync to a specific guild.
+        try:
+            synced = await self.tree.sync()
+            print(f'Synced {len(synced)} command(s) globally')
+        except Exception as e:
+            print(f'Failed to sync commands: {e}')
+
+    async def on_ready(self):
+        print(f'{self.user} has connected to Discord!')
+
+bot = MyBot()
 
 if __name__ == "__main__":
     try:
