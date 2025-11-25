@@ -54,7 +54,7 @@ class Essentials(commands.Cog):
         uptime = str(timedelta(seconds=uptime_seconds))
         
         embed = discord.Embed(title="Bot Information", description="A comprehensive server bot.", color=discord.Color.blue())
-        embed.add_field(name="Developer", value="Antigravity", inline=True)
+        embed.add_field(name="Developer", value="denyxo", inline=True)
         embed.add_field(name="Uptime", value=uptime, inline=True)
         embed.add_field(name="Ping", value=f"{round(self.bot.latency * 1000)}ms", inline=True)
         embed.add_field(name="Python Version", value=platform.python_version(), inline=True)

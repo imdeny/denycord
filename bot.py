@@ -48,6 +48,17 @@ class MyBot(commands.Bot):
 
 bot = MyBot()
 
+@bot.command()
+async def sync(ctx):
+    print("Syncing commands...")
+    try:
+        synced = await bot.tree.sync()
+        await ctx.send(f"Synced {len(synced)} commands globally.")
+        print(f"Synced {len(synced)} commands globally.")
+    except Exception as e:
+        await ctx.send(f"Failed to sync: {e}")
+        print(f"Failed to sync: {e}")
+
 if __name__ == "__main__":
     try:
         bot.run(TOKEN)
