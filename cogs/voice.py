@@ -153,10 +153,10 @@ class Voice(commands.Cog):
 
             # Create channel
             category = after.channel.category
-            overwrites = {
-                member.guild.default_role: discord.PermissionOverwrite(connect=True),
-                member: discord.PermissionOverwrite(manage_channels=True, move_members=True, connect=True)
-            }
+            # Inherit permissions from category
+            overwrites = category.overwrites.copy() if category else {}
+            # Add specific permissions for the creator
+            overwrites[member] = discord.PermissionOverwrite(manage_channels=True, move_members=True, connect=True)
             
             try:
                 new_channel = await member.guild.create_voice_channel(
