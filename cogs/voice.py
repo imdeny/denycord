@@ -31,15 +31,29 @@ class VoiceControlView(discord.ui.View):
              return await interaction.response.send_message("You don't have permission to manage this channel.", ephemeral=True)
 
         # Toggle logic
-        overwrite = channel.overwrites_for(interaction.guild.default_role)
-        if overwrite.connect is False:
-            overwrite.connect = None # Reset to default (usually True/Neutral)
-            await channel.set_permissions(interaction.guild.default_role, overwrite=overwrite)
-            await interaction.response.send_message("🔊 Channel **unlocked** for everyone.", ephemeral=True)
+        # Toggle logic
+        # Determine if we are locking or unlocking based on @everyone
+        everyone_overwrite = channel.overwrites_for(interaction.guild.default_role)
+        is_locked = everyone_overwrite.connect is False
+
+        new_overwrites = channel.overwrites.copy()
+
+        if is_locked:
+            # Unlock: Reset connect to None (inherit) for all roles
+            for target in new_overwrites:
+                if isinstance(target, discord.Role):
+                    new_overwrites[target].connect = None
+            
+            await channel.edit(overwrites=new_overwrites)
+            await interaction.response.send_message("🔊 Channel **unlocked** (permissions reset to category default).", ephemeral=True)
         else:
-            overwrite.connect = False
-            await channel.set_permissions(interaction.guild.default_role, overwrite=overwrite)
-            await interaction.response.send_message("🔒 Channel **locked**.", ephemeral=True)
+            # Lock: Deny connect for all roles
+            for target in new_overwrites:
+                if isinstance(target, discord.Role):
+                    new_overwrites[target].connect = False
+            
+            await channel.edit(overwrites=new_overwrites)
+            await interaction.response.send_message("🔒 Channel **locked** for all roles.", ephemeral=True)
 
     @discord.ui.button(label="Rename", style=discord.ButtonStyle.secondary, custom_id="voice_rename", emoji="✏️")
     async def rename(self, interaction: discord.Interaction, button: discord.ui.Button):
