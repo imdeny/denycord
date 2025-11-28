@@ -116,11 +116,7 @@ class Leveling(commands.Cog):
         
         description = ""
         for i, (user_id, level, xp) in enumerate(results, 1):
-            # Try to get member object, fallback to ID if left
-            member = interaction.guild.get_member(user_id)
-            name = member.name if member else f"User {user_id}"
-            
-            description += f"**{i}.** {name} - Level {level} ({xp} XP)\n"
+            description += f"**{i}.** <@{user_id}> - Level {level} ({xp} XP)\n"
             
         embed.description = description
         await interaction.response.send_message(embed=embed)
