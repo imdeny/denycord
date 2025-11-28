@@ -49,6 +49,7 @@ class MyBot(commands.Bot):
     async def on_ready(self):
         await self.change_presence(activity=discord.CustomActivity(name="Watching channels - /help"))
         print(f'{self.user} has connected to Discord!')
+        print(f'Connected to {len(self.guilds)} server(s).')
 
 bot = MyBot()
 
