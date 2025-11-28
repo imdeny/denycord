@@ -8,9 +8,10 @@ import asyncio
 VOICE_CONFIG_FILE = "voice_config.json"
 
 class VoiceControlView(discord.ui.View):
-    def __init__(self, bot):
+    def __init__(self, cog):
         super().__init__(timeout=None)
-        self.bot = bot
+        self.cog = cog
+        self.bot = cog.bot
 
     @discord.ui.button(label="Lock/Unlock", style=discord.ButtonStyle.secondary, custom_id="voice_lock_toggle", emoji="🔒")
     async def lock_toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -61,7 +62,7 @@ class VoiceControlView(discord.ui.View):
         if not channel or not channel.permissions_for(interaction.user).manage_channels:
              return await interaction.response.send_message("You don't have permission or are not in a channel.", ephemeral=True)
         
-        await interaction.response.send_modal(RenameModal(channel))
+        await interaction.response.send_modal(RenameModal(channel, self.cog))
 
     @discord.ui.button(label="Limit", style=discord.ButtonStyle.secondary, custom_id="voice_limit", emoji="👥")
     async def limit(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -74,13 +75,25 @@ class VoiceControlView(discord.ui.View):
 class RenameModal(discord.ui.Modal, title="Rename Channel"):
     name = discord.ui.TextInput(label="New Channel Name", placeholder="Enter new name...", min_length=1, max_length=100)
 
-    def __init__(self, channel):
+    def __init__(self, channel, cog):
         super().__init__()
         self.channel = channel
+        self.cog = cog
 
     async def on_submit(self, interaction: discord.Interaction):
         await self.channel.edit(name=self.name.value)
-        await interaction.response.send_message(f"Channel renamed to **{self.name.value}**", ephemeral=True)
+        
+        # Save as persistent default
+        user_id = str(interaction.user.id)
+        if "user_settings" not in self.cog.config:
+            self.cog.config["user_settings"] = {}
+        if user_id not in self.cog.config["user_settings"]:
+            self.cog.config["user_settings"][user_id] = {}
+            
+        self.cog.config["user_settings"][user_id]["name"] = self.name.value
+        self.cog.save_config()
+        
+        await interaction.response.send_message(f"Channel renamed to **{self.name.value}** and saved as your default.", ephemeral=True)
 
 class LimitModal(discord.ui.Modal, title="Set User Limit"):
     limit = discord.ui.TextInput(label="User Limit (0 for unlimited)", placeholder="Enter number...", min_length=1, max_length=2)
@@ -189,7 +202,7 @@ class Voice(commands.Cog):
                     description=f"Welcome to your temporary channel, {member.mention}!\nUse the buttons below to manage your channel.",
                     color=discord.Color.blue()
                 )
-                view = VoiceControlView(self.bot)
+                view = VoiceControlView(self)
                 await new_channel.send(embed=embed, view=view)
                 
             except Exception as e:
