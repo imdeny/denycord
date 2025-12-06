@@ -56,7 +56,7 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 
 ### VoiceMaster / Join to Create
 -   **Automatic Channel Management**: Join the "Join to Create" channel to get your own temporary voice channel. It deletes itself when empty.
--   **Control Panel**: A menu with buttons appears in your temporary channel's chat to easily Lock, Unlock, Rename, Limit, and Claim (👑) your channel.
+-   **Control Panel**: A menu with buttons appears in your temporary channel's chat to easily Lock, Unlock, Rename, Limit, and Claim your channel.
 -   **Dynamic Ownership**: If a channel owner leaves, another user can click the "Claim" button to become the new host.
 -   `/voice_setup`: (Admin) Creates the "Join to Create" hub channel and category.
 -   `/voice_setname [name]`: Set your preferred default name for your temporary channels (supports `{user}` placeholder).
