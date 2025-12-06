@@ -72,6 +72,22 @@ class VoiceControlView(discord.ui.View):
         
         await interaction.response.send_modal(LimitModal(channel))
 
+    @discord.ui.button(label="Permit", style=discord.ButtonStyle.secondary, custom_id="voice_permit", emoji="✅")
+    async def permit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        channel = interaction.user.voice.channel if interaction.user.voice else None
+        if not channel or not channel.permissions_for(interaction.user).manage_channels:
+             return await interaction.response.send_message("You don't have permission or are not in a channel.", ephemeral=True)
+        
+        await interaction.response.send_message("Select a user to permit:", view=PermitSelectView(channel), ephemeral=True)
+
+    @discord.ui.button(label="Kick", style=discord.ButtonStyle.danger, custom_id="voice_kick", emoji="👢")
+    async def kick(self, interaction: discord.Interaction, button: discord.ui.Button):
+        channel = interaction.user.voice.channel if interaction.user.voice else None
+        if not channel or not channel.permissions_for(interaction.user).manage_channels:
+             return await interaction.response.send_message("You don't have permission or are not in a channel.", ephemeral=True)
+        
+        await interaction.response.send_message("Select a user to kick:", view=KickSelectView(channel), ephemeral=True)
+
 class RenameModal(discord.ui.Modal, title="Rename Channel"):
     name = discord.ui.TextInput(label="New Channel Name", placeholder="Enter new name...", min_length=1, max_length=100)
 
@@ -111,6 +127,38 @@ class LimitModal(discord.ui.Modal, title="Set User Limit"):
             await interaction.response.send_message(f"User limit set to **{limit_val}**", ephemeral=True)
         except ValueError:
             await interaction.response.send_message("Invalid number. Please enter a number between 0 and 99.", ephemeral=True)
+
+class PermitSelect(discord.ui.UserSelect):
+    def __init__(self, channel):
+        super().__init__(placeholder="Select user to permit...", min_values=1, max_values=1)
+        self.channel = channel
+
+    async def callback(self, interaction: discord.Interaction):
+        member = self.values[0]
+        await self.channel.set_permissions(member, connect=True)
+        await interaction.response.send_message(f"✅ {member.mention} has been permitted to join.", ephemeral=True)
+
+class PermitSelectView(discord.ui.View):
+    def __init__(self, channel):
+        super().__init__()
+        self.add_item(PermitSelect(channel))
+
+class KickSelect(discord.ui.UserSelect):
+    def __init__(self, channel):
+        super().__init__(placeholder="Select user to kick...", min_values=1, max_values=1)
+        self.channel = channel
+
+    async def callback(self, interaction: discord.Interaction):
+        member = self.values[0]
+        if member in self.channel.members:
+            await member.move_to(None)
+        await self.channel.set_permissions(member, connect=False)
+        await interaction.response.send_message(f"👢 {member.mention} has been kicked and blocked.", ephemeral=True)
+
+class KickSelectView(discord.ui.View):
+    def __init__(self, channel):
+        super().__init__()
+        self.add_item(KickSelect(channel))
 
 class Voice(commands.Cog):
     def __init__(self, bot):
