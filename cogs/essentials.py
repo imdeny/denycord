@@ -109,6 +109,7 @@ class Essentials(commands.Cog):
                 commands_list.append(f"`/{command.name}`: {command.description}")
             
             if commands_list:
+                commands_list.sort() # Sort commands alphabetically
                 embed.add_field(name=cog_name, value="\n".join(commands_list), inline=False)
         
         await interaction.response.send_message(embed=embed)

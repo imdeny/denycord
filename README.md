@@ -31,6 +31,7 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/addrole [member] [role]`: Add a role to a member.
 -   `/removerole [member] [role]`: Remove a role from a member.
 -   `/clear [amount]`: Bulk delete messages in the current channel.
+-   `/setup_logs [channel]`: Setup a moderation log channel to track bans, kicks, timeouts, and message events.
 
 ### Fun
 -   `/coinflip`: Flip a coin (Heads or Tails).
@@ -38,20 +39,25 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/8ball [question]`: Ask the magic 8-ball a question.
 -   `/rps [choice]`: Play Rock, Paper, Scissors against the bot.
 -   `/choose [options]`: Let the bot choose from a list of comma-separated options.
+-   `/poll [question] [options]`: Create a poll with up to 10 options.
 
 ### Leveling System
 -   **XP & Levels**: Gain XP by chatting in text channels.
 -   `/rank [member]`: Check your current level, XP, and progress.
+-   `/rank [member]`: Check your current level, XP, and progress.
 -   `/leaderboard`: View the top 10 users with the most XP in the server.
+-   `/setup_rewards`: Configure role rewards to be automatically given at specific levels.
 
 ### Welcome System
 -   **Automated Greetings**: Send a stylish welcome embed to new members.
 -   `/setwelcome [channel]`: Set the channel where welcome messages will be sent.
+-   `/setwelcomemsg [message]`: Set a custom welcome message using variables `{user}`, `{server}`, `{member_count}`.
 -   `/testwelcome`: Test the welcome message configuration.
 
 ### VoiceMaster / Join to Create
 -   **Automatic Channel Management**: Join the "Join to Create" channel to get your own temporary voice channel. It deletes itself when empty.
--   **Control Panel**: A menu with buttons appears in your temporary channel's chat to easily Lock, Unlock, Rename, and Limit your channel.
+-   **Control Panel**: A menu with buttons appears in your temporary channel's chat to easily Lock, Unlock, Rename, Limit, and Claim (👑) your channel.
+-   **Dynamic Ownership**: If a channel owner leaves, another user can click the "Claim" button to become the new host.
 -   `/voice_setup`: (Admin) Creates the "Join to Create" hub channel and category.
 -   `/voice_setname [name]`: Set your preferred default name for your temporary channels (supports `{user}` placeholder).
 

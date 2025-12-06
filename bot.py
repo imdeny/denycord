@@ -38,9 +38,20 @@ class MyBot(commands.Bot):
             except Exception as e:
                 print(f'Failed to load extension {extension}.', e)
 
-        # Sync commands globally
+        # Sync commands globally and to the dev guild
         # Note: Global sync can take up to an hour. For development, sync to a specific guild.
         try:
+            # Sync to Dev Guild for immediate testing
+            dev_guild_id = os.getenv('DEV_GUILD_ID')
+            if dev_guild_id:
+                DEV_GUILD = discord.Object(id=int(dev_guild_id))
+                self.tree.copy_global_to(guild=DEV_GUILD)
+                await self.tree.sync(guild=DEV_GUILD)
+                print(f'Synced commands to Dev Guild (ID: {DEV_GUILD.id})')
+            else:
+                print("DEV_GUILD_ID not set in .env, skipping guild sync.")
+            
+            # Sync Globally
             synced = await self.tree.sync()
             print(f'Synced {len(synced)} command(s) globally')
         except Exception as e:

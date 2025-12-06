@@ -88,6 +88,22 @@ class VoiceControlView(discord.ui.View):
         
         await interaction.response.send_message("Select a user to kick:", view=KickSelectView(channel), ephemeral=True)
 
+    @discord.ui.button(label="Claim", style=discord.ButtonStyle.success, custom_id="voice_claim", emoji="👑")
+    async def claim(self, interaction: discord.Interaction, button: discord.ui.Button):
+        channel = interaction.user.voice.channel if interaction.user.voice else None
+        if not channel:
+             return await interaction.response.send_message("You are not in a voice channel.", ephemeral=True)
+             
+        # Check if anyone in the channel has manage_channels permission
+        active_owners = [m for m in channel.members if channel.permissions_for(m).manage_channels]
+        
+        if active_owners:
+             return await interaction.response.send_message(f"This channel is already owned by {active_owners[0].mention}.", ephemeral=True)
+             
+        # Grant ownership
+        await channel.set_permissions(interaction.user, manage_channels=True, move_members=True, connect=True)
+        await interaction.response.send_message(f"👑 You have claimed ownership of this channel!")
+
 class RenameModal(discord.ui.Modal, title="Rename Channel"):
     name = discord.ui.TextInput(label="New Channel Name", placeholder="Enter new name...", min_length=1, max_length=100)
 

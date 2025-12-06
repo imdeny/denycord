@@ -1,10 +1,108 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
+import sqlite3
+import datetime
 
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.db_name = "bot_database.db"
+        self.init_db()
+
+    def init_db(self):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS mod_logs
+                     (guild_id INTEGER PRIMARY KEY, channel_id INTEGER)''')
+        conn.commit()
+        conn.close()
+
+    async def log_action(self, guild, embed):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute("SELECT channel_id FROM mod_logs WHERE guild_id = ?", (guild.id,))
+        result = c.fetchone()
+        conn.close()
+
+        if result:
+            channel = guild.get_channel(result[0])
+            if channel:
+                await channel.send(embed=embed)
+
+    @app_commands.command(name="setup_logs", description="Sets up the moderation logging channel")
+    @app_commands.describe(channel="The channel to send mod logs to (leave empty to create one)")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def setup_logs(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
+        if channel:
+            conn = sqlite3.connect(self.db_name)
+            c = conn.cursor()
+            c.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
+                      (interaction.guild.id, channel.id))
+            conn.commit()
+            conn.close()
+            await interaction.response.send_message(f"Moderation logs will be sent to {channel.mention}.")
+        else:
+            # Create a new channel
+            overwrites = {
+                interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                interaction.guild.me: discord.PermissionOverwrite(read_messages=True)
+            }
+            try:
+                channel = await interaction.guild.create_text_channel("mod-logs", overwrites=overwrites, reason="Setup mod logs")
+                conn = sqlite3.connect(self.db_name)
+                c = conn.cursor()
+                c.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
+                          (interaction.guild.id, channel.id))
+                conn.commit()
+                conn.close()
+                await interaction.response.send_message(f"Created {channel.mention} and set it as the logging channel.")
+            except discord.Forbidden:
+                 await interaction.response.send_message("I do not have permission to create channels.", ephemeral=True)
+
+    # Listeners for logging
+    @commands.Cog.listener()
+    async def on_message_delete(self, message):
+        if not message.guild or message.author.bot:
+            return
+        
+        embed = discord.Embed(title="Message Deleted", color=discord.Color.red(), timestamp=datetime.datetime.now())
+        embed.set_author(name=message.author.name, icon_url=message.author.display_avatar.url)
+        embed.add_field(name="Content", value=message.content if message.content else "*Image/Embed*", inline=False)
+        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+        embed.add_field(name="ID", value=message.id, inline=True)
+        
+        await self.log_action(message.guild, embed)
+
+    @commands.Cog.listener()
+    async def on_message_edit(self, before, after):
+        if not before.guild or before.author.bot or before.content == after.content:
+            return
+
+        embed = discord.Embed(title="Message Edited", color=discord.Color.orange(), timestamp=datetime.datetime.now())
+        embed.set_author(name=before.author.name, icon_url=before.author.display_avatar.url)
+        embed.add_field(name="Before", value=before.content if before.content else "*Image/Embed*", inline=False)
+        embed.add_field(name="After", value=after.content if after.content else "*Image/Embed*", inline=False)
+        embed.add_field(name="Channel", value=before.channel.mention, inline=True)
+        embed.add_field(name="Link", value=f"[Jump to Message]({after.jump_url})", inline=True)
+
+        await self.log_action(before.guild, embed)
+    
+    @commands.Cog.listener()
+    async def on_member_ban(self, guild, user):
+        embed = discord.Embed(title="Member Banned", color=discord.Color.dark_red(), timestamp=datetime.datetime.now())
+        embed.set_author(name=user.name, icon_url=user.display_avatar.url)
+        embed.add_field(name="User ID", value=user.id, inline=False)
+        await self.log_action(guild, embed)
+
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild, user):
+        embed = discord.Embed(title="Member Unbanned", color=discord.Color.green(), timestamp=datetime.datetime.now())
+        embed.set_author(name=user.name, icon_url=user.display_avatar.url)
+        embed.add_field(name="User ID", value=user.id, inline=False)
+        await self.log_action(guild, embed)
+
+
 
     @app_commands.command(name="kick", description="Kicks a member from the server")
     @app_commands.describe(member="The member to kick", reason="The reason for kicking")
@@ -17,6 +115,14 @@ class Moderation(commands.Cog):
         try:
             await member.kick(reason=reason)
             await interaction.response.send_message(f"Kicked {member.mention} for reason: {reason}")
+            
+            # Log action
+            embed = discord.Embed(title="Member Kicked", color=discord.Color.red(), timestamp=datetime.datetime.now())
+            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Reason", value=reason, inline=True)
+            await self.log_action(interaction.guild, embed)
+            
         except discord.Forbidden:
             await interaction.response.send_message("I do not have permission to kick this user.", ephemeral=True)
         except Exception as e:
@@ -33,6 +139,14 @@ class Moderation(commands.Cog):
         try:
             await member.ban(reason=reason)
             await interaction.response.send_message(f"Banned {member.mention} for reason: {reason}")
+            
+            # Log action
+            embed = discord.Embed(title="Member Banned", color=discord.Color.dark_red(), timestamp=datetime.datetime.now())
+            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Reason", value=reason, inline=True)
+            await self.log_action(interaction.guild, embed)
+
         except discord.Forbidden:
             await interaction.response.send_message("I do not have permission to ban this user.", ephemeral=True)
         except Exception as e:
@@ -62,6 +176,15 @@ class Moderation(commands.Cog):
             from datetime import timedelta
             await member.timeout(timedelta(minutes=duration), reason=reason)
             await interaction.response.send_message(f"Timed out {member.mention} for {duration} minutes. Reason: {reason}")
+            
+            # Log action
+            embed = discord.Embed(title="Member Timed Out", color=discord.Color.orange(), timestamp=datetime.datetime.now())
+            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Duration", value=f"{duration} minutes", inline=True)
+            embed.add_field(name="Reason", value=reason, inline=True)
+            await self.log_action(interaction.guild, embed)
+
         except discord.Forbidden:
             await interaction.response.send_message("I do not have permission to timeout this user.", ephemeral=True)
         except Exception as e:
@@ -74,6 +197,13 @@ class Moderation(commands.Cog):
         try:
             await member.timeout(None, reason=reason)
             await interaction.response.send_message(f"Removed timeout from {member.mention}.")
+            
+            # Log action
+            embed = discord.Embed(title="Timeout Removed", color=discord.Color.green(), timestamp=datetime.datetime.now())
+            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+            await self.log_action(interaction.guild, embed)
+
         except discord.Forbidden:
             await interaction.response.send_message("I do not have permission to moderate this user.", ephemeral=True)
         except Exception as e:
@@ -87,6 +217,14 @@ class Moderation(commands.Cog):
             user = await self.bot.fetch_user(user_id)
             await interaction.guild.unban(user, reason=reason)
             await interaction.response.send_message(f"Unbanned {user.mention}.")
+            
+            # Log action
+            embed = discord.Embed(title="Member Unbanned", color=discord.Color.green(), timestamp=datetime.datetime.now())
+            embed.set_author(name=user.name, icon_url=user.display_avatar.url)
+            embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+            embed.add_field(name="Reason", value=reason, inline=True)
+            await self.log_action(interaction.guild, embed)
+
         except discord.NotFound:
             await interaction.response.send_message("User not found.", ephemeral=True)
         except discord.Forbidden:

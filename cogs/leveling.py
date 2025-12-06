@@ -6,6 +6,72 @@ import random
 import time
 import math
 
+class LevelRewardView(discord.ui.View):
+    def __init__(self, cog):
+        super().__init__(timeout=None)
+        self.cog = cog
+        self.selected_level = None
+        self.selected_role = None
+
+    @discord.ui.select(placeholder="Select Level...", options=[
+        discord.SelectOption(label="Level 1", value="1"),
+        discord.SelectOption(label="Level 5", value="5"),
+        discord.SelectOption(label="Level 10", value="10"),
+        discord.SelectOption(label="Level 15", value="15"),
+        discord.SelectOption(label="Level 20", value="20"),
+        discord.SelectOption(label="Level 25", value="25"),
+        discord.SelectOption(label="Level 30", value="30"),
+        discord.SelectOption(label="Level 40", value="40"),
+        discord.SelectOption(label="Level 50", value="50"),
+        discord.SelectOption(label="Level 100", value="100"),
+    ])
+    async def select_level(self, interaction: discord.Interaction, select: discord.ui.Select):
+        self.selected_level = int(select.values[0])
+        await interaction.response.defer()
+
+    @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="Select Role...")
+    async def select_role(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
+        self.selected_role = select.values[0]
+        await interaction.response.defer()
+    
+    @discord.ui.button(label="Save Configuration", style=discord.ButtonStyle.green)
+    async def save(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True) # Acknowledge the interaction
+        
+        if not self.selected_level or not self.selected_role:
+             return await interaction.followup.send("Please select both a level and a role.", ephemeral=True)
+        
+        # Save to DB
+        conn = sqlite3.connect(self.cog.db_name)
+        c = conn.cursor()
+        c.execute("INSERT OR REPLACE INTO level_roles (guild_id, level, role_id) VALUES (?, ?, ?)", 
+                  (interaction.guild.id, self.selected_level, self.selected_role.id))
+        conn.commit()
+        conn.close()
+        
+        await interaction.followup.send(f"✅ Set **{self.selected_role.name}** for **Level {self.selected_level}**.", ephemeral=True)
+
+    @discord.ui.button(label="View Config", style=discord.ButtonStyle.grey)
+    async def view_config(self, interaction: discord.Interaction, button: discord.ui.Button):
+        conn = sqlite3.connect(self.cog.db_name)
+        c = conn.cursor()
+        c.execute("SELECT level, role_id FROM level_roles WHERE guild_id = ? ORDER BY level", (interaction.guild.id,))
+        results = c.fetchall()
+        conn.close()
+        
+        if not results:
+             return await interaction.response.send_message("No level rewards configured.", ephemeral=True)
+        
+        desc = ""
+        for level, role_id in results:
+            role = interaction.guild.get_role(role_id)
+            role_name = role.mention if role else f"Deleted Role ({role_id})"
+            desc += f"**Level {level}:** {role_name}\n"
+            
+        embed = discord.Embed(title="Level Rewards Config", description=desc, color=discord.Color.gold())
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 class Leveling(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -19,6 +85,9 @@ class Leveling(commands.Cog):
         c.execute('''CREATE TABLE IF NOT EXISTS levels
                      (user_id INTEGER, guild_id INTEGER, xp INTEGER, level INTEGER,
                       PRIMARY KEY (user_id, guild_id))''')
+        c.execute('''CREATE TABLE IF NOT EXISTS level_roles
+                     (guild_id INTEGER, level INTEGER, role_id INTEGER,
+                      PRIMARY KEY (guild_id, level))''')
         conn.commit()
         conn.close()
 
@@ -58,6 +127,20 @@ class Leveling(commands.Cog):
                 new_level = current_level + 1
                 new_xp -= xp_needed
                 await message.channel.send(f"🎉 {message.author.mention} has leveled up to **Level {new_level}**!")
+                
+                # Check for role reward
+                c.execute("SELECT role_id FROM level_roles WHERE guild_id = ? AND level = ?", (guild_id, new_level))
+                role_result = c.fetchone()
+                if role_result:
+                    role_id = role_result[0]
+                    role = message.guild.get_role(role_id)
+                    if role:
+                        try:
+                            await message.author.add_roles(role)
+                            await message.channel.send(f"🏆 You have been awarded the **{role.name}** role!")
+                        except discord.Forbidden:
+                            pass # Bot missing permissions
+
             else:
                 new_level = current_level
                 
@@ -120,6 +203,14 @@ class Leveling(commands.Cog):
             
         embed.description = description
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="setup_rewards", description="Configure level-up role rewards")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def setup_rewards(self, interaction: discord.Interaction):
+        embed = discord.Embed(title="Setup Level Rewards", description="Use the menu below to assign roles to specific levels.", color=discord.Color.blue())
+        view = LevelRewardView(self)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(Leveling(bot))

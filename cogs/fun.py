@@ -68,5 +68,29 @@ class Fun(commands.Cog):
         choice = random.choice(choices)
         await interaction.response.send_message(f"I choose... **{choice}**!")
 
+    @app_commands.command(name="poll", description="Creates a simple poll")
+    @app_commands.describe(question="The question for the poll", options="Options separated by commas")
+    async def poll(self, interaction: discord.Interaction, question: str, options: str):
+        choice_list = [x.strip() for x in options.split(",") if x.strip()]
+        
+        if len(choice_list) < 2 or len(choice_list) > 10:
+             return await interaction.response.send_message("Please provide between 2 and 10 options separated by commas.", ephemeral=True)
+             
+        # Emojis for 1-10
+        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
+        
+        description = []
+        for i, choice in enumerate(choice_list):
+            description.append(f"{emojis[i]} {choice}")
+            
+        embed = discord.Embed(title=f"📊 {question}", description="\n".join(description), color=discord.Color.blue())
+        embed.set_footer(text=f"Poll created by {interaction.user.display_name}")
+        
+        await interaction.response.send_message(embed=embed)
+        message = await interaction.original_response()
+        
+        for i in range(len(choice_list)):
+            await message.add_reaction(emojis[i])
+
 async def setup(bot):
     await bot.add_cog(Fun(bot))
