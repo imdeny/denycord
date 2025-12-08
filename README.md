@@ -32,6 +32,10 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/removerole [member] [role]`: Remove a role from a member.
 -   `/clear [amount]`: Bulk delete messages in the current channel.
 -   `/setup_logs [channel]`: Setup a moderation log channel to track bans, kicks, timeouts, and message events.
+-   `/warn [member] [reason]`: Warn a user and log it.
+-   `/warnings [member]`: View active warnings for a user.
+-   `/clearwarnings [member]`: Clear all warnings for a user.
+-   `/delwarn [id]`: Delete a specific warning by its ID.
 
 ### Fun
 -   `/coinflip`: Flip a coin (Heads or Tails).
@@ -60,6 +64,18 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   **Dynamic Ownership**: If a channel owner leaves, another user can click the "Claim" button to become the new host.
 -   `/voice_setup`: (Admin) Creates the "Join to Create" hub channel and category.
 -   `/voice_setname [name]`: Set your preferred default name for your temporary channels (supports `{user}` placeholder).
+
+### Reaction Roles
+-   **Self-Assignment**: Allow users to assign roles to themselves by reacting to a message.
+-   `/rr add [message_id] [role] [emoji]`: Add a reaction role to a message.
+-   `/rr remove [message_id] [emoji]`: Remove a reaction role from a message.
+-   `/rr list`: List all active reaction roles in the current channel.
+
+### Giveaways
+-   **Host Giveaways**: Easily start and manage giveaways in your server.
+-   `/gstart [duration] [winners] [prize]`: Start a new giveaway (e.g. `/gstart 10m 1 Nitro`).
+-   `/gend [message_id]`: End a giveaway immediately.
+-   `/greroll [message_id]`: Pick a new winner for a finished giveaway.
 
 ## Setup
 

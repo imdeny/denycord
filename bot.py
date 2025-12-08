@@ -15,6 +15,7 @@ if not TOKEN:
 # Setup intents
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 class MyBot(commands.Bot):
     def __init__(self):
@@ -28,7 +29,9 @@ class MyBot(commands.Bot):
             'cogs.fun',
             'cogs.voice',
             'cogs.leveling',
-            'cogs.welcome'
+            'cogs.welcome',
+            'cogs.reaction_roles',
+            'cogs.giveaways'
         ]
         
         for extension in initial_extensions:

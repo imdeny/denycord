@@ -15,6 +15,9 @@ class Moderation(commands.Cog):
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS mod_logs
                      (guild_id INTEGER PRIMARY KEY, channel_id INTEGER)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS warnings
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guild_id INTEGER, 
+                      moderator_id INTEGER, reason TEXT, timestamp TIMESTAMP)''')
         conn.commit()
         conn.close()
 
@@ -308,6 +311,84 @@ class Moderation(commands.Cog):
             await interaction.response.send_message("I do not have permission to manage roles.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"An error occurred: {e}", ephemeral=True)
+
+    @app_commands.command(name="warn", description="Warns a member")
+    @app_commands.describe(member="The member to warn", reason="The reason for the warning")
+    @app_commands.checks.has_permissions(moderate_members=True)
+    async def warn(self, interaction: discord.Interaction, member: discord.Member, reason: str):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute("INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp) VALUES (?, ?, ?, ?, ?)",
+                  (member.id, interaction.guild.id, interaction.user.id, reason, datetime.datetime.now()))
+        conn.commit()
+        conn.close()
+        
+        await interaction.response.send_message(f"⚠️ Warned {member.mention} for: {reason}")
+        
+        # Log action
+        embed = discord.Embed(title="Member Warned", color=discord.Color.yellow(), timestamp=datetime.datetime.now())
+        embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+        embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
+        embed.add_field(name="Reason", value=reason, inline=True)
+        await self.log_action(interaction.guild, embed)
+        
+        try:
+             await member.send(f"You were warned in **{interaction.guild.name}** for: {reason}")
+        except:
+             pass
+
+    @app_commands.command(name="warnings", description="View warnings for a member")
+    @app_commands.describe(member="The member to view warnings for")
+    async def warnings(self, interaction: discord.Interaction, member: discord.Member):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute("SELECT id, moderator_id, reason, timestamp FROM warnings WHERE user_id = ? AND guild_id = ?", 
+                  (member.id, interaction.guild.id))
+        results = c.fetchall()
+        conn.close()
+        
+        if not results:
+            return await interaction.response.send_message(f"{member.mention} has no warnings.", ephemeral=True)
+            
+        embed = discord.Embed(title=f"Warnings - {member.name}", color=discord.Color.orange())
+        
+        for warning_id, mod_id, reason, timestamp in results:
+            mod = interaction.guild.get_member(mod_id)
+            mod_name = mod.name if mod else f"User {mod_id}"
+            # timestamp is stored as string/object, nice formatting handled by sqlite usually but lets be safe
+            date_str = str(timestamp)[:16]
+            embed.add_field(name=f"ID: {warning_id} | {date_str}", value=f"**Mod:** {mod_name}\n**Reason:** {reason}", inline=False)
+            
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="clearwarnings", description="Clear all warnings for a member")
+    @app_commands.describe(member="The member to clear warnings for")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def clearwarnings(self, interaction: discord.Interaction, member: discord.Member):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute("DELETE FROM warnings WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
+        deleted_count = c.rowcount
+        conn.commit()
+        conn.close()
+        
+        await interaction.response.send_message(f"Cleared {deleted_count} warnings for {member.mention}.")
+
+    @app_commands.command(name="delwarn", description="Delete a specific warning by ID")
+    @app_commands.describe(warning_id="The ID of the warning to delete")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def delwarn(self, interaction: discord.Interaction, warning_id: int):
+        conn = sqlite3.connect(self.db_name)
+        c = conn.cursor()
+        c.execute("DELETE FROM warnings WHERE id = ? AND guild_id = ?", (warning_id, interaction.guild.id))
+        deleted_count = c.rowcount
+        conn.commit()
+        conn.close()
+        
+        if deleted_count > 0:
+            await interaction.response.send_message(f"Deleted warning ID {warning_id}.")
+        else:
+            await interaction.response.send_message(f"Warning ID {warning_id} not found.", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))
