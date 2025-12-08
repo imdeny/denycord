@@ -12,10 +12,17 @@ class ReactionRoles(commands.Cog):
     def init_db(self):
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
-        # structure: message_id, role_id, emoji
+        # structure: message_id, role_id, emoji, channel_id
         c.execute('''CREATE TABLE IF NOT EXISTS reaction_roles
-                     (message_id INTEGER, role_id INTEGER, emoji TEXT,
+                     (message_id INTEGER, role_id INTEGER, emoji TEXT, channel_id INTEGER,
                       PRIMARY KEY (message_id, emoji))''')
+        
+        # Migration: Add channel_id if it doesn't exist
+        try:
+            c.execute("ALTER TABLE reaction_roles ADD COLUMN channel_id INTEGER")
+        except sqlite3.OperationalError:
+            pass # Column likely exists
+
         conn.commit()
         conn.close()
 
@@ -35,8 +42,8 @@ class ReactionRoles(commands.Cog):
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         try:
-            c.execute("INSERT INTO reaction_roles (message_id, role_id, emoji) VALUES (?, ?, ?)", 
-                      (msg_id, role.id, emoji))
+            c.execute("INSERT INTO reaction_roles (message_id, role_id, emoji, channel_id) VALUES (?, ?, ?, ?)", 
+                      (msg_id, role.id, emoji, interaction.channel.id))
             conn.commit()
             
             # Add reaction to the message
@@ -87,28 +94,26 @@ class ReactionRoles(commands.Cog):
         conn = sqlite3.connect(self.db_name)
         c = conn.cursor()
         
-        # This is a bit inefficient if we want *all*, but usually user cares about context.
-        # Let's clean up: we don't store channel_id, so we have to check existence.
-        # For a simple list, maybe just show everything? Or filter by valid messages?
-        # Let's just dump all rows for debugging/info purposes or maybe filtered by messages in this channel?
-        # Since we don't store channel_id, we can't filter easily without fetching.
-        # Let's iterate over recent messages or just show count? 
-        # Better: let user ask for a specific message ID?
-        # For now, let's just list ALL (might be spammy if huge bot, but fine for single server usually)
-        
-        c.execute("SELECT message_id, role_id, emoji FROM reaction_roles")
+        c.execute("SELECT message_id, role_id, emoji FROM reaction_roles WHERE channel_id = ?", (interaction.channel.id,))
         rows = c.fetchall()
         
         if not rows:
+            # Fallback for old records without channel_id? 
+            # If we just added the column, old records have NULL channel_id. 
+            # We could try to fetch them if channel_id is NULL, or just accept they might not show up until re-added.
+            # Let's try to fetch NULLs too just in case it's a migration, but it's risky if we are in another channel.
+            # Better to just show current channel ones.
             conn.close()
-            return await interaction.response.send_message("No reaction roles set up.", ephemeral=True)
+            return await interaction.response.send_message("No reaction roles set up for this channel.", ephemeral=True)
 
-        # Simplify: Just list them.
         lines = []
         for msg_id, role_id, emoji in rows:
             role = interaction.guild.get_role(role_id)
             role_name = role.mention if role else f"Deleted Role ({role_id})"
-            lines.append(f"Msg `{msg_id}`: {emoji} -> {role_name}")
+            
+            # Link to message for convenience
+            msg_link = f"https://discord.com/channels/{interaction.guild.id}/{interaction.channel.id}/{msg_id}"
+            lines.append(f"• {emoji} -> {role_name} [Jump to Message]({msg_link})")
 
         conn.close()
         
