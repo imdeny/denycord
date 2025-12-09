@@ -5,6 +5,9 @@ import sqlite3
 import random
 import time
 import math
+import io
+import functools
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 
 class LevelRewardView(discord.ui.View):
     def __init__(self, cog):
@@ -167,21 +170,132 @@ class Leveling(commands.Cog):
             xp, level = result
             xp_needed = self.get_xp_for_level(level)
             
-            embed = discord.Embed(title=f"Rank - {member.name}", color=member.color)
-            embed.set_thumbnail(url=member.display_avatar.url)
-            embed.add_field(name="Level", value=str(level), inline=True)
-            embed.add_field(name="XP", value=f"{xp}/{xp_needed}", inline=True)
-            
-            # Calculate progress bar
-            progress = xp / xp_needed
-            bar_length = 20
-            filled_length = int(bar_length * progress)
-            bar = "█" * filled_length + "░" * (bar_length - filled_length)
-            embed.add_field(name="Progress", value=bar, inline=False)
-            
-            await interaction.response.send_message(embed=embed)
+            await interaction.response.defer()
+            try:
+                img_bytes = await self.generate_rank_card(member, xp, level, xp_needed)
+                file = discord.File(fp=io.BytesIO(img_bytes), filename="rank.png")
+                await interaction.followup.send(file=file)
+            except Exception as e:
+                await interaction.followup.send(f"Error generating rank card: {e}")
+                
         else:
             await interaction.response.send_message(f"{member.mention} has not earned any XP yet.", ephemeral=True)
+
+    async def generate_rank_card(self, member, xp, level, xp_needed):
+        # Download Avatar
+        avatar_bytes = await member.display_avatar.with_format("png").read()
+        
+        # Run CPU-bound task in executor
+        fn = functools.partial(self._process_rank_card, member.name, member.discriminator, avatar_bytes, xp, level, xp_needed)
+        img_bytes = await self.bot.loop.run_in_executor(None, fn)
+        return img_bytes
+
+    def _process_rank_card(self, username, discriminator, avatar_bytes, xp, level, xp_needed):
+        width = 900
+        height = 250
+        
+        # Solid matte black/dark grey - extremely clean
+        bg_color = (18, 18, 18) 
+        image = Image.new("RGB", (width, height), bg_color)
+        draw = ImageDraw.Draw(image)
+        
+        # Avatar (Large, Left, No heavy borders, just clean)
+        avatar_size = 180
+        avatar_x = 40
+        avatar_y = 35
+        
+        try:
+            avatar_image = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+            avatar_image = avatar_image.resize((avatar_size, avatar_size), resample=Image.Resampling.LANCZOS)
+            
+            # Circular Mask
+            mask = Image.new("L", (avatar_size, avatar_size), 0)
+            mask_draw = ImageDraw.Draw(mask)
+            mask_draw.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+            
+            # Apply mask
+            output = ImageOps.fit(avatar_image, mask.size, centering=(0.5, 0.5))
+            output.putalpha(mask)
+            
+            image.paste(output, (avatar_x, avatar_y), output)
+        except Exception as e:
+            print(f"Error processing avatar: {e}")
+
+        # Typography
+        try:
+            # We want a very clean, bold look
+            font_name = ImageFont.truetype("arial.ttf", 50)
+            font_level_label = ImageFont.truetype("arial.ttf", 30)
+            font_level_val = ImageFont.truetype("arial.ttf", 70) # Huge number
+            font_xp = ImageFont.truetype("arial.ttf", 25)
+        except:
+            font_name = ImageFont.load_default()
+            font_level_label = ImageFont.load_default()
+            font_level_val = ImageFont.load_default()
+            font_xp = ImageFont.load_default()
+
+        # Layout
+        text_x = 260
+        
+        # Username - Upper Left relative to text area (With Glitch Effect)
+        # Red Shadow
+        draw.text((text_x + 2, 45), username, font=font_name, fill=(255, 0, 0, 150))
+        # Cyan Shadow
+        draw.text((text_x - 2, 45), username, font=font_name, fill=(0, 255, 255, 150))
+        # White Main
+        draw.text((text_x, 45), username, font=font_name, fill=(255, 255, 255))
+        
+        # XP - Subtle, below name
+        xp_text = f"{xp} / {xp_needed} XP"
+        draw.text((text_x, 105), xp_text, font=font_xp, fill=(150, 150, 150))
+        
+        # Level - Right side, Big and Bold
+        level_val_text = str(level)
+        w_val = draw.textlength(level_val_text, font=font_level_val)
+        
+        # Draw "LEVEL" small label above the number
+        level_label_text = "LEVEL"
+        w_label = draw.textlength(level_label_text, font=font_level_label)
+        
+        # Align Group Right (margin 50)
+        right_margin = 50
+        # Determine center of the group for alignment? Or just right align both.
+        # Let's right align both to the margin.
+        
+        # Number
+        draw.text((width - right_margin - w_val, 40), level_val_text, font=font_level_val, fill=(255, 255, 255))
+        
+        # Label (placed above the number or to the left? Let's go with aligned above/left of number for style)
+        # Actually in minimal designs, "LEVEL" often sits on top of the number or sidebar.
+        # Let's put "LEVEL" vertically centered with name but on right, and number below it?
+        # Let's stick to Right Aligned.
+        
+        draw.text((width - right_margin - w_val - w_label - 15, 65), level_label_text, font=font_level_label, fill=(100, 100, 100)) # Darker grey label for minimal contrast
+
+        # 4. Progress Bar (Thin Gradient)
+        bar_x = 260
+        bar_y = 150
+        bar_w = 580
+        bar_h = 6 # Thin line
+        
+        # Background Line
+        draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=(40, 40, 40))
+        
+        # Gradient Fill (Simulated by drawing segments or just a solid color for now, Pillow gradient is complex)
+        # Let's do a solid Pink/Purple color for the fill as requested "Purple -> Pink" style vibe
+        progress = min(xp / xp_needed, 1.0)
+        fill_w = int(bar_w * progress)
+        
+        if fill_w > 0:
+            # We can draw a simple horizontal gradient using a loop if we want premium
+            # Or just a nice Color. Let's do a nice Magenta.
+            draw.rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], fill=(215, 0, 120)) # Magenta/Pink
+
+        # Save
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer.getvalue()
 
     @app_commands.command(name="leaderboard", description="Shows the top 10 users in the server")
     async def leaderboard(self, interaction: discord.Interaction):
