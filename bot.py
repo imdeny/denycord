@@ -31,7 +31,8 @@ class MyBot(commands.Bot):
             'cogs.leveling',
             'cogs.welcome',
             'cogs.reaction_roles',
-            'cogs.giveaways'
+            'cogs.giveaways',
+            'cogs.music'
         ]
         
         for extension in initial_extensions:

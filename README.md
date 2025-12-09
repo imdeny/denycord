@@ -7,6 +7,7 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   **Slash Commands**: Modern, easy-to-use commands integrated directly into Discord's UI.
 -   **Modular Design**: Commands are organized into categories (Essentials, Moderation, Fun).
 -   **Easy Setup**: Simple configuration via `.env` file.
+-   **Music System**: High-quality music playback with queuing and auto-disconnect.
 
 ## Commands
 
@@ -76,6 +77,19 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/gstart [duration] [winners] [prize]`: Start a new giveaway (e.g. `/gstart 10m 1 Nitro`).
 -   `/gend [message_id]`: End a giveaway immediately.
 -   `/greroll [message_id]`: Pick a new winner for a finished giveaway.
+
+### Music
+-   **High Quality Playback**: Play music from YouTube.
+-   `/play [query]`: Play a song or add it to the queue.
+-   `/pause`: Pause the current song.
+-   `/resume`: Resume playback.
+-   `/stop`: Stop playback, clear queue, and disconnect.
+-   `/skip`: Skip the current song.
+-   `/queue`: View the current song queue.
+-   `/nowplaying`: details about the currently playing song.
+-   `/join`: Join your voice channel.
+-   `/leave`: Disconnect from the channel.
+
 
 ## Setup
 
