@@ -32,7 +32,8 @@ class MyBot(commands.Bot):
             'cogs.welcome',
             'cogs.reaction_roles',
             'cogs.giveaways',
-            'cogs.music'
+            'cogs.music',
+            'cogs.automod'
         ]
         
         for extension in initial_extensions:

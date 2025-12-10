@@ -90,6 +90,14 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/join`: Join your voice channel.
 -   `/leave`: Disconnect from the channel.
 
+### Auto-Moderation
+-   **Proactive Protection**: Automatically filter bad words, invite links, spam, and more.
+-   `/automod_setup`: View the current configuration and help menu.
+-   `/automod_toggle [feature]`: Enable/disable Anti-Invite, Anti-Links, or Anti-Caps.
+-   `/automod_limits [feature] [limit]`: Set numeric limits for Mentions or Emojis.
+-   `/automod_badwords [action] [word]`: Add or remove words from the blocked list.
+-   `/automod_exempt [action] [role]`: Exempt specific roles from all filters.
+
 
 ## Setup
 

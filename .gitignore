@@ -1,5 +1,5 @@
 .env
 __pycache__/
 *.pyc
-voice_config.json
+*.json
 *.db
