@@ -1,33 +1,15 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import sqlite3
 import datetime
 
 class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_name = "bot_database.db"
-        self.init_db()
-
-    def init_db(self):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS mod_logs
-                     (guild_id INTEGER PRIMARY KEY, channel_id INTEGER)''')
-        c.execute('''CREATE TABLE IF NOT EXISTS warnings
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guild_id INTEGER, 
-                      moderator_id INTEGER, reason TEXT, timestamp TIMESTAMP)''')
-        conn.commit()
-        conn.close()
 
     async def log_action(self, guild, embed):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute("SELECT channel_id FROM mod_logs WHERE guild_id = ?", (guild.id,))
-        result = c.fetchone()
-        conn.close()
-
+        result = self.bot.db.fetchone("SELECT channel_id FROM mod_logs WHERE guild_id = ?", (guild.id,))
+        
         if result:
             channel = guild.get_channel(result[0])
             if channel:
@@ -38,12 +20,8 @@ class Moderation(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_logs(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
         if channel:
-            conn = sqlite3.connect(self.db_name)
-            c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
+            self.bot.db.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
                       (interaction.guild.id, channel.id))
-            conn.commit()
-            conn.close()
             await interaction.response.send_message(f"Moderation logs will be sent to {channel.mention}.")
         else:
             # Create a new channel
@@ -53,12 +31,8 @@ class Moderation(commands.Cog):
             }
             try:
                 channel = await interaction.guild.create_text_channel("mod-logs", overwrites=overwrites, reason="Setup mod logs")
-                conn = sqlite3.connect(self.db_name)
-                c = conn.cursor()
-                c.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
+                self.bot.db.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
                           (interaction.guild.id, channel.id))
-                conn.commit()
-                conn.close()
                 await interaction.response.send_message(f"Created {channel.mention} and set it as the logging channel.")
             except discord.Forbidden:
                  await interaction.response.send_message("I do not have permission to create channels.", ephemeral=True)
@@ -104,8 +78,6 @@ class Moderation(commands.Cog):
         embed.set_author(name=user.name, icon_url=user.display_avatar.url)
         embed.add_field(name="User ID", value=user.id, inline=False)
         await self.log_action(guild, embed)
-
-
 
     @app_commands.command(name="kick", description="Kicks a member from the server")
     @app_commands.describe(member="The member to kick", reason="The reason for kicking")
@@ -316,12 +288,8 @@ class Moderation(commands.Cog):
     @app_commands.describe(member="The member to warn", reason="The reason for the warning")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warn(self, interaction: discord.Interaction, member: discord.Member, reason: str):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute("INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp) VALUES (?, ?, ?, ?, ?)",
+        self.bot.db.execute("INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp) VALUES (?, ?, ?, ?, ?)",
                   (member.id, interaction.guild.id, interaction.user.id, reason, datetime.datetime.now()))
-        conn.commit()
-        conn.close()
         
         await interaction.response.send_message(f"⚠️ Warned {member.mention} for: {reason}")
         
@@ -340,12 +308,8 @@ class Moderation(commands.Cog):
     @app_commands.command(name="warnings", description="View warnings for a member")
     @app_commands.describe(member="The member to view warnings for")
     async def warnings(self, interaction: discord.Interaction, member: discord.Member):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute("SELECT id, moderator_id, reason, timestamp FROM warnings WHERE user_id = ? AND guild_id = ?", 
+        results = self.bot.db.fetchall("SELECT id, moderator_id, reason, timestamp FROM warnings WHERE user_id = ? AND guild_id = ?", 
                   (member.id, interaction.guild.id))
-        results = c.fetchall()
-        conn.close()
         
         if not results:
             return await interaction.response.send_message(f"{member.mention} has no warnings.", ephemeral=True)
@@ -355,7 +319,6 @@ class Moderation(commands.Cog):
         for warning_id, mod_id, reason, timestamp in results:
             mod = interaction.guild.get_member(mod_id)
             mod_name = mod.name if mod else f"User {mod_id}"
-            # timestamp is stored as string/object, nice formatting handled by sqlite usually but lets be safe
             date_str = str(timestamp)[:16]
             embed.add_field(name=f"ID: {warning_id} | {date_str}", value=f"**Mod:** {mod_name}\n**Reason:** {reason}", inline=False)
             
@@ -365,12 +328,8 @@ class Moderation(commands.Cog):
     @app_commands.describe(member="The member to clear warnings for")
     @app_commands.checks.has_permissions(administrator=True)
     async def clearwarnings(self, interaction: discord.Interaction, member: discord.Member):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute("DELETE FROM warnings WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
+        c = self.bot.db.execute("DELETE FROM warnings WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
         deleted_count = c.rowcount
-        conn.commit()
-        conn.close()
         
         await interaction.response.send_message(f"Cleared {deleted_count} warnings for {member.mention}.")
 
@@ -378,12 +337,8 @@ class Moderation(commands.Cog):
     @app_commands.describe(warning_id="The ID of the warning to delete")
     @app_commands.checks.has_permissions(administrator=True)
     async def delwarn(self, interaction: discord.Interaction, warning_id: int):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute("DELETE FROM warnings WHERE id = ? AND guild_id = ?", (warning_id, interaction.guild.id))
+        c = self.bot.db.execute("DELETE FROM warnings WHERE id = ? AND guild_id = ?", (warning_id, interaction.guild.id))
         deleted_count = c.rowcount
-        conn.commit()
-        conn.close()
         
         if deleted_count > 0:
             await interaction.response.send_message(f"Deleted warning ID {warning_id}.")

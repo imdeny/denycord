@@ -5,8 +5,6 @@ import json
 import os
 import asyncio
 
-VOICE_CONFIG_FILE = "voice_config.json"
-
 class VoiceControlView(discord.ui.View):
     def __init__(self, cog):
         super().__init__(timeout=None)
@@ -19,28 +17,15 @@ class VoiceControlView(discord.ui.View):
         if not channel:
             return await interaction.response.send_message("You are not in a voice channel.", ephemeral=True)
         
-        # Check ownership (simple check: is the user the one who created it? 
-        # For now, we assume the user in the channel with manage_channels permission is the owner, 
-        # or we rely on the bot's tracking. Since we don't have persistent ownership tracking in this simple view,
-        # we'll check if the user has permission to manage the channel or if they are the only one there initially.
-        # A better way for this specific bot is to check if the channel is a temp channel and if the user is the 'owner'.
-        # We can store ownership in the channel topic or just check permissions.)
-        
-        # Actually, for "Join to Create", usually the bot gives the user Manage Channel perms or specific perms.
-        # Let's check if the user has "Manage Channel" permission on this channel.
         if not channel.permissions_for(interaction.user).manage_channels:
              return await interaction.response.send_message("You don't have permission to manage this channel.", ephemeral=True)
 
-        # Toggle logic
-        # Toggle logic
-        # Determine if we are locking or unlocking based on @everyone
         everyone_overwrite = channel.overwrites_for(interaction.guild.default_role)
         is_locked = everyone_overwrite.connect is False
 
         new_overwrites = channel.overwrites.copy()
 
         if is_locked:
-            # Unlock: Reset connect to None (inherit) for all roles
             for target in new_overwrites:
                 if isinstance(target, discord.Role):
                     new_overwrites[target].connect = None
@@ -48,7 +33,6 @@ class VoiceControlView(discord.ui.View):
             await channel.edit(overwrites=new_overwrites)
             await interaction.response.send_message("🔊 Channel **unlocked** (permissions reset to category default).", ephemeral=True)
         else:
-            # Lock: Deny connect for all roles
             for target in new_overwrites:
                 if isinstance(target, discord.Role):
                     new_overwrites[target].connect = False
@@ -94,13 +78,11 @@ class VoiceControlView(discord.ui.View):
         if not channel:
              return await interaction.response.send_message("You are not in a voice channel.", ephemeral=True)
              
-        # Check if anyone in the channel has manage_channels permission
         active_owners = [m for m in channel.members if channel.permissions_for(m).manage_channels]
         
         if active_owners:
              return await interaction.response.send_message(f"This channel is already owned by {active_owners[0].mention}.", ephemeral=True)
              
-        # Grant ownership
         await channel.set_permissions(interaction.user, manage_channels=True, move_members=True, connect=True)
         await interaction.response.send_message(f"👑 You have claimed ownership of this channel!")
 
@@ -116,14 +98,7 @@ class RenameModal(discord.ui.Modal, title="Rename Channel"):
         await self.channel.edit(name=self.name.value)
         
         # Save as persistent default
-        user_id = str(interaction.user.id)
-        if "user_settings" not in self.cog.config:
-            self.cog.config["user_settings"] = {}
-        if user_id not in self.cog.config["user_settings"]:
-            self.cog.config["user_settings"][user_id] = {}
-            
-        self.cog.config["user_settings"][user_id]["name"] = self.name.value
-        self.cog.save_config()
+        self.cog.save_user_settings(interaction.user.id, self.name.value)
         
         await interaction.response.send_message(f"Channel renamed to **{self.name.value}** and saved as your default.", ephemeral=True)
 
@@ -179,21 +154,34 @@ class KickSelectView(discord.ui.View):
 class Voice(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.config = self.load_config()
         self.temp_channels = [] # List of temp channel IDs to track for deletion
+        # Caches
+        self.hub_cache = {} 
+        self.user_settings_cache = {}
 
-    def load_config(self):
-        if not os.path.exists(VOICE_CONFIG_FILE):
-            return {"guilds": {}, "user_settings": {}}
-        try:
-            with open(VOICE_CONFIG_FILE, "r") as f:
-                return json.load(f)
-        except json.JSONDecodeError:
-            return {"guilds": {}, "user_settings": {}}
+    def get_hub_id(self, guild_id):
+        if guild_id in self.hub_cache:
+            return self.hub_cache[guild_id]
+        
+        result = self.bot.db.fetchone("SELECT hub_id FROM voice_hubs WHERE guild_id = ?", (guild_id,))
+        if result:
+            self.hub_cache[guild_id] = result[0]
+            return result[0]
+        return None
 
-    def save_config(self):
-        with open(VOICE_CONFIG_FILE, "w") as f:
-            json.dump(self.config, f, indent=4)
+    def get_user_settings(self, user_id):
+        if user_id in self.user_settings_cache:
+            return self.user_settings_cache[user_id]
+        
+        result = self.bot.db.fetchone("SELECT name FROM voice_user_settings WHERE user_id = ?", (user_id,))
+        if result:
+            self.user_settings_cache[user_id] = result[0]
+            return result[0]
+        return None
+
+    def save_user_settings(self, user_id, name):
+        self.bot.db.execute("INSERT OR REPLACE INTO voice_user_settings (user_id, name) VALUES (?, ?)", (user_id, name))
+        self.user_settings_cache[user_id] = name
 
     @app_commands.command(name="voice_setup", description="Setup the Join to Create channel")
     @app_commands.checks.has_permissions(administrator=True)
@@ -202,51 +190,35 @@ class Voice(commands.Cog):
         category = await guild.create_category("Voice Channels")
         channel = await guild.create_voice_channel("Join to Create", category=category)
         
-        if str(guild.id) not in self.config["guilds"]:
-            self.config["guilds"][str(guild.id)] = {}
-        
-        self.config["guilds"][str(guild.id)]["hub_id"] = channel.id
-        self.save_config()
+        self.bot.db.execute("INSERT OR REPLACE INTO voice_hubs (guild_id, hub_id) VALUES (?, ?)", (guild.id, channel.id))
+        self.hub_cache[guild.id] = channel.id
         
         await interaction.response.send_message(f"Setup complete! Join {channel.mention} to create a temporary voice channel.")
 
     @app_commands.command(name="voice_setname", description="Set your default temporary channel name")
     @app_commands.describe(name="The name for your channel (use {user} for your username)")
     async def setname(self, interaction: discord.Interaction, name: str):
-        user_id = str(interaction.user.id)
-        if "user_settings" not in self.config:
-            self.config["user_settings"] = {}
-        if user_id not in self.config["user_settings"]:
-            self.config["user_settings"][user_id] = {}
-            
-        self.config["user_settings"][user_id]["name"] = name
-        self.save_config()
+        self.save_user_settings(interaction.user.id, name)
         await interaction.response.send_message(f"Your default channel name has been set to: `{name}`", ephemeral=True)
 
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
-        guild_id = str(member.guild.id)
-        if guild_id not in self.config["guilds"]:
+        hub_id = self.get_hub_id(member.guild.id)
+        if not hub_id:
             return
 
-        hub_id = self.config["guilds"][guild_id].get("hub_id")
-        
         # Join to Create Logic
         if after.channel and after.channel.id == hub_id:
-            # Determine channel name
-            user_id = str(member.id)
             user_name = member.display_name
+            user_config_name = self.get_user_settings(member.id)
             
-            if user_id in self.config.get("user_settings", {}) and "name" in self.config["user_settings"][user_id]:
-                channel_name = self.config["user_settings"][user_id]["name"].replace("{user}", user_name)
+            if user_config_name:
+                channel_name = user_config_name.replace("{user}", user_name)
             else:
                 channel_name = f"{user_name}'s Channel"
 
-            # Create channel
             category = after.channel.category
-            # Inherit permissions from category
             overwrites = category.overwrites.copy() if category else {}
-            # Add specific permissions for the creator
             overwrites[member] = discord.PermissionOverwrite(manage_channels=True, move_members=True, connect=True)
             
             try:
@@ -256,11 +228,8 @@ class Voice(commands.Cog):
                     overwrites=overwrites
                 )
                 self.temp_channels.append(new_channel.id)
-                
-                # Move member
                 await member.move_to(new_channel)
                 
-                # Send control panel
                 embed = discord.Embed(
                     title="Voice Control Panel",
                     description=f"Welcome to your temporary channel, {member.mention}!\nUse the buttons below to manage your channel.",
@@ -280,7 +249,6 @@ class Voice(commands.Cog):
                     self.temp_channels.remove(before.channel.id)
                 except Exception as e:
                     print(f"Error deleting channel: {e}")
-                    # If delete fails (e.g. already deleted), just remove from list
                     if before.channel.id in self.temp_channels:
                         self.temp_channels.remove(before.channel.id)
 

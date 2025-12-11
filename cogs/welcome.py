@@ -1,32 +1,13 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import sqlite3
 
 class Welcome(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_name = "bot_database.db"
-        self.init_db()
-
-    def init_db(self):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS welcome_config
-                     (guild_id INTEGER PRIMARY KEY, channel_id INTEGER)''')
-        try:
-            c.execute("ALTER TABLE welcome_config ADD COLUMN message_text TEXT")
-        except sqlite3.OperationalError:
-            pass # Column already exists
-        conn.commit()
-        conn.close()
 
     def get_welcome_config(self, guild_id):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute("SELECT channel_id, message_text FROM welcome_config WHERE guild_id = ?", (guild_id,))
-        result = c.fetchone()
-        conn.close()
+        result = self.bot.db.fetchone("SELECT channel_id, message_text FROM welcome_config WHERE guild_id = ?", (guild_id,))
         return result
 
     async def send_welcome_message(self, member, config):
@@ -66,35 +47,22 @@ class Welcome(commands.Cog):
     @app_commands.describe(channel="The channel to send welcome messages in")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def setwelcome(self, interaction: discord.Interaction, channel: discord.TextChannel):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        c.execute("SELECT 1 FROM welcome_config WHERE guild_id = ?", (interaction.guild.id,))
-        if c.fetchone():
-            c.execute("UPDATE welcome_config SET channel_id = ? WHERE guild_id = ?", (channel.id, interaction.guild.id))
+        if self.bot.db.fetchone("SELECT 1 FROM welcome_config WHERE guild_id = ?", (interaction.guild.id,)):
+            self.bot.db.execute("UPDATE welcome_config SET channel_id = ? WHERE guild_id = ?", (channel.id, interaction.guild.id))
         else:
-            c.execute("INSERT INTO welcome_config (guild_id, channel_id) VALUES (?, ?)", (interaction.guild.id, channel.id))
+            self.bot.db.execute("INSERT INTO welcome_config (guild_id, channel_id) VALUES (?, ?)", (interaction.guild.id, channel.id))
             
-        conn.commit()
-        conn.close()
-        
         await interaction.response.send_message(f"Welcome messages will now be sent to {channel.mention}.")
 
     @app_commands.command(name="setwelcomemsg", description="Sets the custom welcome message")
     @app_commands.describe(message="The message (use {user}, {server}, {member_count})")
     @app_commands.checks.has_permissions(manage_guild=True)
     async def setwelcomemsg(self, interaction: discord.Interaction, message: str):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
-        c.execute("SELECT 1 FROM welcome_config WHERE guild_id = ?", (interaction.guild.id,))
-        if c.fetchone():
-            c.execute("UPDATE welcome_config SET message_text = ? WHERE guild_id = ?", (message, interaction.guild.id))
+        if self.bot.db.fetchone("SELECT 1 FROM welcome_config WHERE guild_id = ?", (interaction.guild.id,)):
+            self.bot.db.execute("UPDATE welcome_config SET message_text = ? WHERE guild_id = ?", (message, interaction.guild.id))
         else:
-            c.execute("INSERT INTO welcome_config (guild_id, message_text) VALUES (?, ?)", (interaction.guild.id, message))
-            
-        conn.commit()
-        conn.close()
+            self.bot.db.execute("INSERT INTO welcome_config (guild_id, message_text) VALUES (?, ?)", (interaction.guild.id, message))
+        
         await interaction.response.send_message(f"Welcome message set to:\n{message}")
 
     @app_commands.command(name="testwelcome", description="Tests the welcome message")

@@ -1,57 +1,29 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import sqlite3
 import re
-
 import json
 import os
 
 class AutoMod(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_name = "bot_database.db"
-        self.bad_words_file = "bad_words.json"
-        self.init_db()
+        # Cache: guild_id -> settings_dict
+        self.settings_cache = {}
         
-        self.default_bad_words = self.load_bad_words()
-
-    def load_bad_words(self):
-        if os.path.exists(self.bad_words_file):
-            try:
-                with open(self.bad_words_file, "r") as f:
-                    return set(json.load(f))
-            except json.JSONDecodeError:
-                print(f"Error decoding {self.bad_words_file}. Using empty default.")
-                return set()
-        else:
-            return set() 
-
-    def init_db(self):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        # Create table
-        c.execute('''CREATE TABLE IF NOT EXISTS automod_settings
-                     (guild_id INTEGER PRIMARY KEY, 
-                      bad_words TEXT, 
-                      anti_invite INTEGER, 
-                      anti_links INTEGER, 
-                      anti_caps INTEGER, 
-                      max_mentions INTEGER, 
-                      max_emojis INTEGER, 
-                      exempt_roles TEXT)''')
-        conn.commit()
-        conn.close()
+        # Load default bad words into memory if needed, 
+        # but we relying on DB now.
+        # We can implement a migration check if we want, but for now we assume fresh start or manual migration.
 
     def get_settings(self, guild_id):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        c.execute("SELECT * FROM automod_settings WHERE guild_id = ?", (guild_id,))
-        result = c.fetchone()
-        conn.close()
+        # Check cache first
+        if guild_id in self.settings_cache:
+            return self.settings_cache[guild_id]
+            
+        result = self.bot.db.fetchone("SELECT * FROM automod_settings WHERE guild_id = ?", (guild_id,))
         
         if result:
-            return {
+            settings = {
                 "bad_words": result[1].split(",") if result[1] else [],
                 "anti_invite": bool(result[2]),
                 "anti_links": bool(result[3]),
@@ -61,9 +33,9 @@ class AutoMod(commands.Cog):
                 "exempt_roles": [int(r) for r in result[7].split(",") if r] if result[7] else []
             }
         else:
-            # Default settings if not configured
-            return {
-                "bad_words": list(self.default_bad_words),
+            # Default settings
+            settings = {
+                "bad_words": [],
                 "anti_invite": True,
                 "anti_links": False,
                 "anti_caps": False,
@@ -71,21 +43,23 @@ class AutoMod(commands.Cog):
                 "max_emojis": 5,
                 "exempt_roles": []
             }
+        
+        # Update cache
+        self.settings_cache[guild_id] = settings
+        return settings
 
     def save_settings(self, guild_id, settings):
-        conn = sqlite3.connect(self.db_name)
-        c = conn.cursor()
-        
         bad_words_str = ",".join(settings["bad_words"])
         exempt_roles_str = ",".join(map(str, settings["exempt_roles"]))
         
-        c.execute('''INSERT OR REPLACE INTO automod_settings 
+        self.bot.db.execute('''INSERT OR REPLACE INTO automod_settings 
                      (guild_id, bad_words, anti_invite, anti_links, anti_caps, max_mentions, max_emojis, exempt_roles)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                   (guild_id, bad_words_str, int(settings["anti_invite"]), int(settings["anti_links"]), 
                    int(settings["anti_caps"]), settings["max_mentions"], settings["max_emojis"], exempt_roles_str))
-        conn.commit()
-        conn.close()
+        
+        # Update cache
+        self.settings_cache[guild_id] = settings
 
     async def check_exemption(self, message, settings):
         if message.author.guild_permissions.administrator:
@@ -117,7 +91,6 @@ class AutoMod(commands.Cog):
 
         # 2. Anti-Link
         if settings["anti_links"]:
-            # Basic regex for http/https links
             if re.search(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+", content):
                  await message.delete()
                  await message.channel.send(f"{message.author.mention}, links are not allowed!", delete_after=5)
@@ -126,7 +99,6 @@ class AutoMod(commands.Cog):
         # 3. Bad Words
         if settings["bad_words"]:
             for word in settings["bad_words"]:
-                # Simple check, can be improved with regex boundary
                 if word in content:
                     await message.delete()
                     await message.channel.send(f"{message.author.mention}, that language is not allowed!", delete_after=5)
@@ -149,16 +121,8 @@ class AutoMod(commands.Cog):
 
         # 6. Anti-Emoji
         if settings["max_emojis"] > 0:
-            # Count custom emojis
             custom_emojis = len(re.findall(r'<a?:[^:]+:[0-9]+>', message.content))
-            # Count unicode emojis (approximate regex)
-            # A simple way without external libs is just to count distinct emoji characters if possible 
-            # or usually just custom emojis + lenient unicode check is enough.
-            # For strictness, let's just count custom emojis for now + basic unicode ranges if needed.
-            # We'll stick to custom emojis + a naive unicode count might be complex without 'emoji' lib.
-            # Let's count standard unicode blocks if we want, but typically custom emojis are the spam vector.
-            # We will proceed with custom emojis counting for reliability + simple unicode regex.
-            unicode_emojis = len(re.findall(r'[\U0001f600-\U0001f64f]', message.content)) # Emoticons
+            unicode_emojis = len(re.findall(r'[\U0001f600-\U0001f64f]', message.content))
             
             total_emojis = custom_emojis + unicode_emojis
             if total_emojis > settings["max_emojis"]:
@@ -171,7 +135,6 @@ class AutoMod(commands.Cog):
     @app_commands.command(name="automod_setup", description="Interactive setup for Auto-Moderation")
     @app_commands.checks.has_permissions(administrator=True)
     async def setup(self, interaction: discord.Interaction):
-        # A help menu or simple summary
         embed = discord.Embed(title="🛡️ Auto-Moderation Setup", color=discord.Color.blue())
         embed.description = "Use the following commands to configure AutoMod:\n\n" \
                             "• `/automod toggle <feature>` - Enable/Disable filters\n" \

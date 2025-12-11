@@ -5,18 +5,26 @@ import yt_dlp
 import asyncio
 import datetime
 import os
+import shutil
 
-# FFmpeg fix for fresh installs where PATH isn't updated for the running process
-def add_ffmpeg_path():
-    # Helper to find and add ffmpeg to path if not present via WinGet default location
-    local_app_data = os.getenv('LOCALAPPDATA')
-    if local_app_data:
-        ffmpeg_path = os.path.join(local_app_data, r"Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin")
-        if os.path.exists(ffmpeg_path) and ffmpeg_path not in os.environ["PATH"]:
-            print(f"Adding FFmpeg to PATH: {ffmpeg_path}")
-            os.environ["PATH"] += ";" + ffmpeg_path
+# FFmpeg setup
+def ensure_ffmpeg():
+    if shutil.which("ffmpeg") is None:
+        # Helper to find and add ffmpeg to path if not present via WinGet or common locations
+        # This is a fallback attempt for Windows users
+        local_app_data = os.getenv('LOCALAPPDATA')
+        if local_app_data:
+            common_paths = [
+                 os.path.join(local_app_data, r"Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin"),
+                 r"C:\ffmpeg\bin"
+            ]
+            for path in common_paths:
+                if os.path.exists(path) and path not in os.environ["PATH"]:
+                    print(f"Adding FFmpeg to PATH: {path}")
+                    os.environ["PATH"] += ";" + path
+                    break
 
-add_ffmpeg_path()
+ensure_ffmpeg()
 
 # Output logging options for yt-dlp
 YTDL_OPTIONS = {
@@ -80,10 +88,6 @@ class MusicPlayer:
         self.current = None
         self.start_time = None
 
-        self.disconnect_timer = None
-        
-        ctx.bot.loop.create_task(self.player_loop())
-
     async def player_loop(self):
         await self.bot.wait_until_ready()
 
@@ -91,27 +95,26 @@ class MusicPlayer:
             self.next.clear()
 
             try:
-                # Wait for the next song. If we create a task for this, we can also check for empty queue activity.
-                async with asyncio.timeout(120): # 2 minutes timeout
+                # Wait for the next song.
+                async with asyncio.timeout(300): # 5 minutes timeout
                      source = await self.queue.get()
             except asyncio.TimeoutError:
                 return self.destroy(self.guild)
 
             if not isinstance(source, YTDLSource):
+                # Should not happen if type checking is good, but safety net
                 pass
 
             self.current = source
             self.start_time = datetime.datetime.now(datetime.timezone.utc)
             
-            # Play the song
-            self.guild.voice_client.play(source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set))
-            
-            # Send Now Playing embed
-            await self.channel.send(embed=self.create_np_embed(source))
-
-            # Wait for song to finish
-            await self.next.wait()
-
+            try:
+                self.guild.voice_client.play(source, after=lambda _: self.bot.loop.call_soon_threadsafe(self.next.set))
+                await self.channel.send(embed=self.create_np_embed(source))
+                await self.next.wait()
+            except Exception as e:
+                print(f"Error playing song: {e}")
+                
             # Cleanup
             self.current = None
             source.cleanup()
@@ -120,24 +123,17 @@ class MusicPlayer:
         embed = discord.Embed(
             title="🎶 Now Playing", 
             description=f"[{source.title}]({source.url})", 
-            color=discord.Color.from_rgb(75, 139, 190) # Nice blue color
+            color=discord.Color.from_rgb(75, 139, 190)
         )
         
         duration = source.duration
         if duration:
-            # Create progress bar
             try:
-                current_time = datetime.datetime.now(datetime.timezone.utc)
-                elapsed = (current_time - self.start_time).total_seconds() if self.start_time else 0
-                
-                # Cap elapsed at duration (for when song is finished but next hasn't started)
-                elapsed = min(elapsed, duration)
-                
+                # Calculate progress logic for future polling/updates if we wanted dynamic updating,
+                # but for static embed start, it is 0.
                 total_blocks = 15
-                filled_blocks = int((elapsed / duration) * total_blocks)
-                
-                bar = "▬" * filled_blocks + "🔘" + "▬" * (total_blocks - filled_blocks)
-                time_str = f"{str(datetime.timedelta(seconds=int(elapsed)))} / {str(datetime.timedelta(seconds=duration))}"
+                bar = "🔘" + "▬" * (total_blocks)
+                time_str = f"0:00 / {str(datetime.timedelta(seconds=duration))}"
                 embed.add_field(name="Progress", value=f"`{bar}`\n`{time_str}`", inline=False)
             except Exception:
                  embed.add_field(name="Duration", value=str(datetime.timedelta(seconds=duration)), inline=False)
@@ -145,7 +141,6 @@ class MusicPlayer:
              embed.add_field(name="Duration", value="Live / Unknown", inline=False)
 
         embed.add_field(name="Requested by", value=source.requester.mention if source.requester else "Unknown", inline=True)
-        
         if source.thumbnail:
             embed.set_thumbnail(url=source.thumbnail)
             
@@ -176,6 +171,7 @@ class Music(commands.Cog):
         except KeyError:
             player = MusicPlayer(ctx, self)
             self.players[ctx.guild.id] = player
+            self.bot.loop.create_task(player.player_loop())
         
         return player
 
@@ -196,10 +192,6 @@ class Music(commands.Cog):
 
         player = self.get_player(await self.bot.get_context(interaction))
 
-        # Retrieve song
-        # Note: We are using a helper to wrap the interaction context slightly or just using the player logic
-        # For simplicity in this structure:
-        
         try:
             source = await YTDLSource.from_url(query, loop=self.bot.loop, stream=True, requester=interaction.user)
         except Exception as e:
@@ -259,7 +251,6 @@ class Music(commands.Cog):
         if player.queue.empty():
             return await interaction.response.send_message("Queue is empty.", ephemeral=True)
 
-        # Create a temp list to view queue without consuming
         upcoming = list(player.queue._queue)
         
         fmt = '\n'.join([f'**{i + 1}.** {_source.title}' for i, _source in enumerate(upcoming[:10])])
@@ -279,7 +270,28 @@ class Music(commands.Cog):
         if not player.current:
             return await interaction.response.send_message("Nothing is playing.", ephemeral=True)
 
-        await interaction.response.send_message(embed=player.create_np_embed(player.current))
+        # Re-calc progress specifically for this command
+        source = player.current
+        embed = player.create_np_embed(source)
+        # Update progress in embed
+        if source.duration:
+             try:
+                current_time = datetime.datetime.now(datetime.timezone.utc)
+                elapsed = (current_time - player.start_time).total_seconds() if player.start_time else 0
+                elapsed = min(elapsed, source.duration)
+                
+                total_blocks = 15
+                filled_blocks = int((elapsed / source.duration) * total_blocks)
+                
+                bar = "▬" * filled_blocks + "🔘" + "▬" * (total_blocks - filled_blocks)
+                time_str = f"{str(datetime.timedelta(seconds=int(elapsed)))} / {str(datetime.timedelta(seconds=source.duration))}"
+                
+                # Replace the field
+                embed.set_field_at(0, name="Progress", value=f"`{bar}`\n`{time_str}`", inline=False)
+             except:
+                 pass
+
+        await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="join", description="Joins your voice channel")
     async def join(self, interaction: discord.Interaction):

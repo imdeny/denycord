@@ -123,10 +123,10 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 
 4.  **Run the Bot**:
     ```bash
-    - The bot will automatically create `bot_database.db` and initialize all necessary tables.
-    - FFmpeg is required for music. The bot attempts to find it automatically, but ensure it is installed if music fails.
     python bot.py
     ```
+    - The bot will automatically create `bot_database.db` and initialize all necessary tables.
+    - FFmpeg is required for music. The bot attempts to find it automatically, but ensure it is installed if music fails.
 
 ## Contributing
 
