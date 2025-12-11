@@ -2,6 +2,7 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from utils.database import DatabaseManager
 
 # Load environment variables
 load_dotenv()
@@ -20,6 +21,7 @@ intents.members = True
 class MyBot(commands.AutoShardedBot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
+        self.db = DatabaseManager()
 
     async def setup_hook(self):
         # Load cogs

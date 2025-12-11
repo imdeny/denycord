@@ -117,10 +117,14 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
     -   Add your Discord Bot Token:
         ```env
         DISCORD_TOKEN=your_token_here
+        # Optional: Add DEV_GUILD_ID for faster slash command testing
+        DEV_GUILD_ID=your_guild_id
         ```
 
 4.  **Run the Bot**:
     ```bash
+    - The bot will automatically create `bot_database.db` and initialize all necessary tables.
+    - FFmpeg is required for music. The bot attempts to find it automatically, but ensure it is installed if music fails.
     python bot.py
     ```
 
