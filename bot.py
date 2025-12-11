@@ -17,7 +17,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 
-class MyBot(commands.Bot):
+class MyBot(commands.AutoShardedBot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
 
