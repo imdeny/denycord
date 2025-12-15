@@ -35,7 +35,8 @@ class MyBot(commands.AutoShardedBot):
             'cogs.reaction_roles',
             'cogs.giveaways',
             'cogs.music',
-            'cogs.automod'
+            'cogs.automod',
+            'cogs.tickets'
         ]
         
         for extension in initial_extensions:
@@ -59,8 +60,9 @@ class MyBot(commands.AutoShardedBot):
                 print("DEV_GUILD_ID not set in .env, skipping guild sync.")
             
             # Sync Globally
-            synced = await self.tree.sync()
-            print(f'Synced {len(synced)} command(s) globally')
+            # synced = await self.tree.sync()
+            # print(f'Synced {len(synced)} command(s) globally')
+            print("Skipped global sync to prevent startup timeouts. Use !sync to sync globally.")
         except Exception as e:
             print(f'Failed to sync commands: {e}')
 

@@ -98,6 +98,12 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/automod_badwords [action] [word]`: Add or remove words from the blocked list.
 -   `/automod_exempt [action] [role]`: Exempt specific roles from all filters.
 
+### Ticket System
+-   **Private Support**: One-click private ticket creation for users to contact staff.
+-   **Archive System**: Closed tickets are automatically secured in a read-only archive category.
+-   `/ticket setup`: (Admin) Initialize the ticket panel and categories.
+-   `/ticket add [user]` / `/ticket remove [user]`: Manage access to a specific ticket.
+
 
 ## Setup
 

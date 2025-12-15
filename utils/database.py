@@ -67,6 +67,14 @@ class DatabaseManager:
                       max_emojis INTEGER, 
                       exempt_roles TEXT)''')
         
+        # --- Tickets ---
+        c.execute('''CREATE TABLE IF NOT EXISTS ticket_settings
+                     (guild_id INTEGER PRIMARY KEY, active_category_id INTEGER, 
+                      archive_category_id INTEGER, panel_channel_id INTEGER)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS tickets
+                     (channel_id INTEGER PRIMARY KEY, guild_id INTEGER, 
+                      owner_id INTEGER, status TEXT, created_at TIMESTAMP)''')
+
         # --- Voice Config ---
         # Storing guild config (hub_id) and user settings. 
         # Using a simplistic Key-Value text storage for json blobs might be easiest if schema varies, 
