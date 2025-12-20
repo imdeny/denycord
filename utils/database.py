@@ -70,7 +70,16 @@ class DatabaseManager:
         # --- Tickets ---
         c.execute('''CREATE TABLE IF NOT EXISTS ticket_settings
                      (guild_id INTEGER PRIMARY KEY, active_category_id INTEGER, 
-                      archive_category_id INTEGER, panel_channel_id INTEGER)''')
+                      archive_category_id INTEGER, panel_channel_id INTEGER,
+                      transcript_channel_id INTEGER, ticket_count INTEGER DEFAULT 0)''')
+        try:
+            c.execute("ALTER TABLE ticket_settings ADD COLUMN transcript_channel_id INTEGER")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            c.execute("ALTER TABLE ticket_settings ADD COLUMN ticket_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass
         c.execute('''CREATE TABLE IF NOT EXISTS tickets
                      (channel_id INTEGER PRIMARY KEY, guild_id INTEGER, 
                       owner_id INTEGER, status TEXT, created_at TIMESTAMP)''')

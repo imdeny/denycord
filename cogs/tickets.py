@@ -3,6 +3,8 @@ from discord.ext import commands
 from discord import app_commands
 import datetime
 import asyncio
+import chat_exporter
+import io
 
 class TicketPanelView(discord.ui.View):
     def __init__(self, bot):
@@ -42,7 +44,7 @@ class TicketPanelView(discord.ui.View):
                     self.bot.db.execute("UPDATE tickets SET status = 'CLOSED' WHERE channel_id = ?", (existing_ticket[0],))
             
             # 3. Create Ticket Channel
-            # Permissions: Everyone NO, User YES, Staff YES (Inherited from category usually, but let's be explicit)
+            # Permissions: Everyone NO, User YES, Staff YES
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
@@ -50,7 +52,14 @@ class TicketPanelView(discord.ui.View):
             }
             
             try:
-                channel_name = f"ticket-{interaction.user.name}"
+                # Increment ticket count
+                self.bot.db.execute("UPDATE ticket_settings SET ticket_count = ticket_count + 1 WHERE guild_id = ?", (interaction.guild.id,))
+                
+                # Fetch new count
+                count_data = self.bot.db.fetchone("SELECT ticket_count FROM ticket_settings WHERE guild_id = ?", (interaction.guild.id,))
+                ticket_id = count_data[0] if count_data else 1 # Fallback to 1 if something weird happens
+                
+                channel_name = f"ticket-{ticket_id:04d}-{interaction.user.name}"
                 ticket_channel = await interaction.guild.create_text_channel(name=channel_name, category=category, overwrites=overwrites)
                 
                 # 4. Log to DB
@@ -74,36 +83,95 @@ class TicketControlView(discord.ui.View):
         super().__init__(timeout=None)
         self.bot = bot
 
+    async def generate_text_transcript(self, channel):
+        output = io.StringIO()
+        output.write(f"Transcript for {channel.name}\nServer: {channel.guild.name}\nGenerated: {datetime.datetime.now()}\n\n")
+        
+        async for msg in channel.history(limit=None, oldest_first=True):
+            timestamp = msg.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            output.write(f"[{timestamp}] {msg.author}: {msg.clean_content}\n")
+            if msg.attachments:
+                for att in msg.attachments:
+                     output.write(f"    [Attachment: {att.url}]\n")
+            if msg.embeds:
+                output.write(f"    [Embed: See HTML version]\n")
+                
+        return output.getvalue()
+
     @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.red, custom_id="ticket_close", emoji="🔒")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # Fetch archive category
-        settings = self.bot.db.fetchone("SELECT archive_category_id FROM ticket_settings WHERE guild_id = ?", (interaction.guild.id,))
-        if not settings:
-             return await interaction.response.send_message("Archive category not found.", ephemeral=True)
-        
-        archive_cat_id = settings[0]
-        archive_cat = interaction.guild.get_channel(archive_cat_id)
-        
-        if not archive_cat:
-            return await interaction.response.send_message("Archive category removed. Cannot archive.", ephemeral=True)
-            
         await interaction.response.defer()
-        
+        channel = interaction.channel
+        guild = interaction.guild
+
+        # Get settings for log channel
+        settings = self.bot.db.fetchone("SELECT transcript_channel_id FROM ticket_settings WHERE guild_id = ?", (guild.id,))
+        log_channel_id = settings[0] if settings else None
+        log_channel = guild.get_channel(log_channel_id) if log_channel_id else None
+
+        await channel.send("🔒 Generating transcript and closing ticket...")
+
         try:
-            # Move to archive with sync_permissions=True
-            # This wipes channel-specific overwrites and inherits from Category (which is Admin-only)
-            await interaction.channel.edit(category=archive_cat, sync_permissions=True)
+            # Generate Transcripts
+            html_transcript = await chat_exporter.export(channel)
+            text_transcript = await self.generate_text_transcript(channel)
             
-            # Update DB
-            self.bot.db.execute("UPDATE tickets SET status = 'CLOSED' WHERE channel_id = ?", (interaction.channel.id,))
+            if html_transcript is None:
+                 await channel.send("Failed to generate transcript.")
+                 return
+
+            files = [
+                discord.File(io.BytesIO(text_transcript.encode()), filename=f"transcript-{channel.name}.txt"),
+                discord.File(io.BytesIO(html_transcript.encode()), filename=f"transcript-{channel.name}.html")
+            ]
+
+            # --- Send to Log Channel ---
+            if log_channel:
+                log_embed = discord.Embed(title="Ticket Closed", color=discord.Color.red(), timestamp=datetime.datetime.now())
+                log_embed.add_field(name="Ticket", value=channel.name, inline=True)
+                log_embed.add_field(name="Closed By", value=interaction.user.mention, inline=True)
+                log_embed.add_field(name="Formats", value="📄 Text (Quick View)\n🌐 HTML (Full View - Download)", inline=False)
+                
+                # Fetch owner from DB to mention them if possible
+                ticket_data = self.bot.db.fetchone("SELECT owner_id FROM tickets WHERE channel_id = ?", (channel.id,))
+                owner_id = ticket_data[0] if ticket_data else None
+                owner = guild.get_member(owner_id) if owner_id else None
+                
+                if owner:
+                    log_embed.add_field(name="Owner", value=owner.mention, inline=True)
+                
+                # Reset pointers for file reuse? No, discord.File consumes the IO. Need fresh streams or list comprehension again.
+                # Actually safest to just create new IO objects since encode() is cheap.
+                log_files = [
+                    discord.File(io.BytesIO(text_transcript.encode()), filename=f"transcript-{channel.name}.txt"),
+                    discord.File(io.BytesIO(html_transcript.encode()), filename=f"transcript-{channel.name}.html")
+                ]
+                await log_channel.send(embed=log_embed, files=log_files)
             
-            await interaction.followup.send("Ticket closed and archived. 🔒")
+            # --- Send to User (DM) ---
+            if owner:
+                 try:
+                     dm_files = [
+                        discord.File(io.BytesIO(text_transcript.encode()), filename=f"transcript-{channel.name}.txt"),
+                        discord.File(io.BytesIO(html_transcript.encode()), filename=f"transcript-{channel.name}.html")
+                    ]
+                     await owner.send(
+                         f"Your ticket **{channel.name}** has been closed.\n"
+                         f"📄 **.txt**: Quick text view.\n"
+                         f"🌐 **.html**: Download to view full chat with images/colors.", 
+                         files=dm_files
+                    )
+                 except discord.Forbidden:
+                     pass # User has DMs blocked
+
+            # Close/Delete Ticket
+            self.bot.db.execute("UPDATE tickets SET status = 'CLOSED' WHERE channel_id = ?", (channel.id,))
             
-            # Stop the view interactions (cleanup)
-            self.stop()
-            
+            await asyncio.sleep(5) # Give a moment to read the closing message
+            await channel.delete(reason="Ticket Closed")
+
         except Exception as e:
-             await interaction.followup.send(f"Error closing ticket: {e}")
+            await channel.send(f"Error occurred while closing: {e}")
 
 class Tickets(commands.Cog):
     def __init__(self, bot):
@@ -124,45 +192,36 @@ class Tickets(commands.Cog):
         guild = interaction.guild
         
         try:
-            # 1. Create Categories
-            # Active: Staff Only (View)
+            # 1. Create Active Category
             active_overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 guild.me: discord.PermissionOverwrite(read_messages=True, manage_channels=True)
             }
-            # Add implicit staff access via roles? No, let's trust staff have perms or just rely on Admin
-            # But "is_staff" logic implies we want Moderators to see it too.
-            # Ideally we find a "Moderator" role or just rely on anyone with perms being able to see hidden channels?
-            # Discord perms are tricky. Admins see everything. Mods with "View Channel" need specific overwrites if @everyone is denied.
-            # Simplified: We create it, and setup command user (Admin) can configure specific role access if needed, 
-            # Or we iterate roles and add any with Administrator/Kick/Ban? That's too message heavy.
-            # Let's just create it private.
-            
             active_cat = await guild.create_category("Tickets", overwrites=active_overwrites)
             
-            # Archive: Read Only for all (who can see it)
-            archive_overwrites = {
+            # 2. Create Log Channel (Private)
+            log_overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                guild.me: discord.PermissionOverwrite(read_messages=True, manage_channels=True)
+                guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
             }
-            archive_cat = await guild.create_category("Archived Tickets", overwrites=archive_overwrites)
+            log_channel = await guild.create_text_channel("ticket-logs", overwrites=log_overwrites)
             
-            # 2. Create Panel Channel (Public, Read-Only)
+            # 3. Create Panel Channel (Public, Read-Only)
             panel_overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=True, send_messages=False),
                 guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True)
             }
             panel_channel = await guild.create_text_channel("support-tickets", category=None, overwrites=panel_overwrites)
             
-            # 3. Send Panel Message
+            # 4. Send Panel Message
             embed = discord.Embed(title="Support Tickets", description="Click the button below to open a ticket with staff.", color=discord.Color.blue())
             await panel_channel.send(embed=embed, view=TicketPanelView(self.bot))
             
-            # 4. Save to DB
-            self.bot.db.execute("INSERT OR REPLACE INTO ticket_settings (guild_id, active_category_id, archive_category_id, panel_channel_id) VALUES (?, ?, ?, ?)",
-                                (guild.id, active_cat.id, archive_cat.id, panel_channel.id))
+            # 5. Save to DB
+            self.bot.db.execute("INSERT OR REPLACE INTO ticket_settings (guild_id, active_category_id, panel_channel_id, transcript_channel_id) VALUES (?, ?, ?, ?)",
+                                (guild.id, active_cat.id, panel_channel.id, log_channel.id))
             
-            await interaction.followup.send(f"Setup complete!\nPanel: {panel_channel.mention}\nActive Category: {active_cat.name}\nArchive Category: {archive_cat.name}\n\n**Note**: Please adjust category permissions to ensure your Staff roles can view the 'Tickets' category.")
+            await interaction.followup.send(f"Setup complete!\nPanel: {panel_channel.mention}\nTickets Category: {active_cat.name}\nLogs Channel: {log_channel.mention}\n\n**Note**: Please adjust category permissions to ensure your Staff roles can view the 'Tickets' category and '#ticket-logs'.")
             
         except Exception as e:
             await interaction.followup.send(f"Setup failed: {e}")
@@ -173,8 +232,6 @@ class Tickets(commands.Cog):
         if "ticket-" not in interaction.channel.name:
              return await interaction.response.send_message("This does not look like a ticket channel.", ephemeral=True)
              
-        # Check permissions (Owner or Staff)
-
         await interaction.channel.set_permissions(user, read_messages=True, send_messages=True)
         await interaction.response.send_message(f"Added {user.mention} to the ticket.")
 

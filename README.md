@@ -99,10 +99,13 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
 -   `/automod_exempt [action] [role]`: Exempt specific roles from all filters.
 
 ### Ticket System
--   **Private Support**: One-click private ticket creation for users to contact staff.
--   **Archive System**: Closed tickets are automatically secured in a read-only archive category.
--   `/ticket setup`: (Admin) Initialize the ticket panel and categories.
--   `/ticket add [user]` / `/ticket remove [user]`: Manage access to a specific ticket.
+- **Setup**: `/ticket setup` - Sets up the ticket system (Category, Panel, Log Channel).
+- **Features**:
+  - One-click ticket creation.
+  - Automatic channel permissions for the user and staff.
+  - **Transcripts**: Closing a ticket generates an HTML transcript, sends it to the log channel, and DMs it to the user.
+  - Private Support & Archive System: Closed tickets are automatically secured in a read-only archive category.
+- **Commands**: `/ticket add [user]`, `/ticket remove [user]` to manage user access in a specific ticket.
 
 
 ## Setup
