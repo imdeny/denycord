@@ -137,6 +137,19 @@ A comprehensive Discord bot built with Python and discord.py, featuring modular 
     - The bot will automatically create `bot_database.db` and initialize all necessary tables.
     - FFmpeg is required for music. The bot attempts to find it automatically, but ensure it is installed if music fails.
 
+### Docker Setup
+
+You can also run the bot using Docker, which handles all dependency installation (including FFmpeg) automatically.
+
+1.  **Prerequisites**: Install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+2.  **Run**:
+    ```bash
+    docker-compose up -d
+    ```
+    This will build the image and start the bot in the background.
+3.  **Logs**: to view logs run `docker-compose logs -f`.
+4.  **Stop**: to stop the bot run `docker-compose down`.
+
 ## Contributing
 
 Feel free to submit issues or pull requests to improve the bot!
