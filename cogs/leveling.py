@@ -182,11 +182,13 @@ class Leveling(commands.Cog):
             print(f"Error processing avatar: {e}")
 
         try:
-            font_name = ImageFont.truetype("arial.ttf", 50)
-            font_level_label = ImageFont.truetype("arial.ttf", 30)
-            font_level_val = ImageFont.truetype("arial.ttf", 70) 
-            font_xp = ImageFont.truetype("arial.ttf", 25)
-        except:
+            # Increased font sizes
+            font_name = ImageFont.truetype("arial.ttf", 60)
+            font_level_label = ImageFont.truetype("arial.ttf", 40)
+            font_level_val = ImageFont.truetype("arial.ttf", 100) 
+            font_xp = ImageFont.truetype("arial.ttf", 30)
+        except Exception as e:
+            print(f"Error loading fonts: {e}")
             font_name = ImageFont.load_default()
             font_level_label = ImageFont.load_default()
             font_level_val = ImageFont.load_default()
