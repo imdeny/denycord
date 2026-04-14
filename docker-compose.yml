@@ -6,3 +6,5 @@ services:
       - ./bot_database.db:/app/bot_database.db
     env_file:
       - .env
+    environment:
+      - PYTHONUNBUFFERED=1

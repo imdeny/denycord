@@ -260,6 +260,57 @@ class Music(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="queue_remove", description="Remove a song from the queue by position")
+    @app_commands.describe(position="Position of the song to remove (1 = next song)")
+    async def queue_remove(self, interaction: discord.Interaction, position: int):
+        vc = interaction.guild.voice_client
+        if not vc or not vc.is_connected():
+            return await interaction.response.send_message("I am not connected to a voice channel.", ephemeral=True)
+
+        player = self.get_player(await self.bot.get_context(interaction))
+        queue_list = list(player.queue._queue)
+
+        if not queue_list:
+            return await interaction.response.send_message("The queue is empty.", ephemeral=True)
+
+        if position < 1 or position > len(queue_list):
+            return await interaction.response.send_message(f"Invalid position. Queue has {len(queue_list)} song(s).", ephemeral=True)
+
+        removed = queue_list.pop(position - 1)
+        player.queue._queue.clear()
+        for item in queue_list:
+            player.queue._queue.append(item)
+
+        await interaction.response.send_message(f"Removed **{removed.title}** from the queue.")
+
+    @app_commands.command(name="queue_move", description="Move a song to a different position in the queue")
+    @app_commands.describe(from_pos="Current position of the song", to_pos="New position for the song")
+    async def queue_move(self, interaction: discord.Interaction, from_pos: int, to_pos: int):
+        vc = interaction.guild.voice_client
+        if not vc or not vc.is_connected():
+            return await interaction.response.send_message("I am not connected to a voice channel.", ephemeral=True)
+
+        player = self.get_player(await self.bot.get_context(interaction))
+        queue_list = list(player.queue._queue)
+
+        if not queue_list:
+            return await interaction.response.send_message("The queue is empty.", ephemeral=True)
+
+        n = len(queue_list)
+        if from_pos < 1 or from_pos > n or to_pos < 1 or to_pos > n:
+            return await interaction.response.send_message(f"Invalid positions. Queue has {n} song(s).", ephemeral=True)
+
+        if from_pos == to_pos:
+            return await interaction.response.send_message("That song is already in that position.", ephemeral=True)
+
+        song = queue_list.pop(from_pos - 1)
+        queue_list.insert(to_pos - 1, song)
+        player.queue._queue.clear()
+        for item in queue_list:
+            player.queue._queue.append(item)
+
+        await interaction.response.send_message(f"Moved **{song.title}** to position {to_pos}.")
+
     @app_commands.command(name="nowplaying", description="Shows the currently playing song")
     async def now_playing(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client

@@ -98,6 +98,37 @@ class TicketControlView(discord.ui.View):
                 
         return output.getvalue()
 
+    @discord.ui.button(label="Templates", style=discord.ButtonStyle.secondary, custom_id="ticket_templates", emoji="📋")
+    async def use_template(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not (interaction.user.guild_permissions.administrator or
+                interaction.user.guild_permissions.ban_members or
+                interaction.user.guild_permissions.kick_members):
+            return await interaction.response.send_message("Only staff can use templates.", ephemeral=True)
+
+        templates = self.bot.db.fetchall(
+            "SELECT name, content FROM ticket_templates WHERE guild_id = ? ORDER BY name",
+            (interaction.guild.id,)
+        )
+        if not templates:
+            return await interaction.response.send_message(
+                "No templates set up. Use `/ticket_template_add` to create one.", ephemeral=True
+            )
+
+        templates_map = {name: content for name, content in templates}
+        options = [discord.SelectOption(label=name[:100], value=name[:100]) for name, _ in templates[:25]]
+
+        class TemplateSelect(discord.ui.Select):
+            def __init__(self):
+                super().__init__(placeholder="Choose a template to send...", options=options)
+
+            async def callback(self_inner, select_interaction: discord.Interaction):
+                content = templates_map.get(self_inner.values[0], "Template not found.")
+                await select_interaction.response.send_message(content)
+
+        view = discord.ui.View(timeout=60)
+        view.add_item(TemplateSelect())
+        await interaction.response.send_message("Select a template:", view=view, ephemeral=True)
+
     @discord.ui.button(label="Close Ticket", style=discord.ButtonStyle.red, custom_id="ticket_close", emoji="🔒")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
@@ -240,9 +271,47 @@ class Tickets(commands.Cog):
     async def ticket_remove(self, interaction: discord.Interaction, user: discord.Member):
         if "ticket-" not in interaction.channel.name:
              return await interaction.response.send_message("This does not look like a ticket channel.", ephemeral=True)
-        
+
         await interaction.channel.set_permissions(user, overwrite=None)
         await interaction.response.send_message(f"Removed {user.mention} from the ticket.")
+
+    @app_commands.command(name="ticket_template_add", description="Add a staff response template for tickets")
+    @app_commands.describe(name="Short name for the template", content="The template message content")
+    @app_commands.checks.has_permissions(ban_members=True)
+    async def ticket_template_add(self, interaction: discord.Interaction, name: str, content: str):
+        try:
+            self.bot.db.execute(
+                "INSERT OR REPLACE INTO ticket_templates (guild_id, name, content) VALUES (?, ?, ?)",
+                (interaction.guild.id, name[:100], content)
+            )
+            await interaction.response.send_message(f"Template **{name}** saved.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"Error saving template: {e}", ephemeral=True)
+
+    @app_commands.command(name="ticket_template_delete", description="Delete a staff response template")
+    @app_commands.describe(name="Name of the template to delete")
+    @app_commands.checks.has_permissions(ban_members=True)
+    async def ticket_template_delete(self, interaction: discord.Interaction, name: str):
+        self.bot.db.execute(
+            "DELETE FROM ticket_templates WHERE guild_id = ? AND name = ?",
+            (interaction.guild.id, name)
+        )
+        await interaction.response.send_message(f"Template **{name}** deleted.", ephemeral=True)
+
+    @app_commands.command(name="ticket_template_list", description="List all saved ticket templates")
+    async def ticket_template_list(self, interaction: discord.Interaction):
+        templates = self.bot.db.fetchall(
+            "SELECT name, content FROM ticket_templates WHERE guild_id = ? ORDER BY name",
+            (interaction.guild.id,)
+        )
+        if not templates:
+            return await interaction.response.send_message("No templates saved yet.", ephemeral=True)
+
+        embed = discord.Embed(title="Ticket Templates", color=discord.Color.blue())
+        for name, content in templates:
+            embed.add_field(name=name, value=content[:200] + ("..." if len(content) > 200 else ""), inline=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(Tickets(bot))

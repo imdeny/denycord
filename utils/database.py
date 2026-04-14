@@ -84,12 +84,32 @@ class DatabaseManager:
                      (channel_id INTEGER PRIMARY KEY, guild_id INTEGER, 
                       owner_id INTEGER, status TEXT, created_at TIMESTAMP)''')
 
+        # --- Auto-Mod Actions ---
+        c.execute('''CREATE TABLE IF NOT EXISTS automod_actions
+                     (guild_id INTEGER PRIMARY KEY, warn_threshold INTEGER,
+                      action TEXT, duration_minutes INTEGER)''')
+
+        # --- Ticket Templates ---
+        c.execute('''CREATE TABLE IF NOT EXISTS ticket_templates
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER,
+                      name TEXT, content TEXT, UNIQUE(guild_id, name))''')
+
+        # --- Stats Channels ---
+        c.execute('''CREATE TABLE IF NOT EXISTS stats_channels
+                     (guild_id INTEGER, stat_type TEXT, channel_id INTEGER,
+                      PRIMARY KEY (guild_id, stat_type))''')
+
+        # --- Auto Roles ---
+        c.execute('''CREATE TABLE IF NOT EXISTS auto_roles
+                     (guild_id INTEGER, role_id INTEGER,
+                      PRIMARY KEY (guild_id, role_id))''')
+
         # --- Voice Config ---
-        # Storing guild config (hub_id) and user settings. 
-        # Using a simplistic Key-Value text storage for json blobs might be easiest if schema varies, 
+        # Storing guild config (hub_id) and user settings.
+        # Using a simplistic Key-Value text storage for json blobs might be easiest if schema varies,
         # but let's try to structure it.
         # Actually, since voice_config.json stores strictly nested data, let's make two tables.
-        
+
         c.execute('''CREATE TABLE IF NOT EXISTS voice_hubs
                      (guild_id INTEGER PRIMARY KEY, hub_id INTEGER)''')
         

@@ -290,20 +290,72 @@ class Moderation(commands.Cog):
     async def warn(self, interaction: discord.Interaction, member: discord.Member, reason: str):
         self.bot.db.execute("INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp) VALUES (?, ?, ?, ?, ?)",
                   (member.id, interaction.guild.id, interaction.user.id, reason, datetime.datetime.now()))
-        
-        await interaction.response.send_message(f"⚠️ Warned {member.mention} for: {reason}")
-        
+
+        warn_count = self.bot.db.fetchone(
+            "SELECT COUNT(*) FROM warnings WHERE user_id = ? AND guild_id = ?",
+            (member.id, interaction.guild.id)
+        )[0]
+
+        await interaction.response.send_message(f"⚠️ Warned {member.mention} for: {reason} (Warning {warn_count})")
+
         # Log action
         embed = discord.Embed(title="Member Warned", color=discord.Color.yellow(), timestamp=datetime.datetime.now())
         embed.set_author(name=member.name, icon_url=member.display_avatar.url)
         embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
         embed.add_field(name="Reason", value=reason, inline=True)
+        embed.add_field(name="Total Warnings", value=str(warn_count), inline=True)
         await self.log_action(interaction.guild, embed)
-        
+
         try:
-             await member.send(f"You were warned in **{interaction.guild.name}** for: {reason}")
-        except:
-             pass
+            await member.send(f"You were warned in **{interaction.guild.name}** for: {reason} (Warning {warn_count})")
+        except discord.Forbidden:
+            pass
+
+        # Check auto-mod action threshold
+        action_config = self.bot.db.fetchone(
+            "SELECT warn_threshold, action, duration_minutes FROM automod_actions WHERE guild_id = ?",
+            (interaction.guild.id,)
+        )
+        if action_config:
+            threshold, action, duration = action_config
+            if warn_count >= threshold:
+                auto_reason = f"Auto-{action}: reached {threshold} warnings"
+                try:
+                    if action == "kick":
+                        await member.kick(reason=auto_reason)
+                        await interaction.channel.send(f"Auto-kicked {member.mention} for reaching {threshold} warnings.")
+                    elif action == "ban":
+                        await member.ban(reason=auto_reason)
+                        await interaction.channel.send(f"Auto-banned {member.mention} for reaching {threshold} warnings.")
+                    elif action == "timeout":
+                        from datetime import timedelta
+                        await member.timeout(timedelta(minutes=duration), reason=auto_reason)
+                        await interaction.channel.send(f"Auto-timed out {member.mention} for {duration} minutes (reached {threshold} warnings).")
+                except discord.Forbidden:
+                    await interaction.channel.send(f"Could not auto-{action} {member.mention}: missing permissions.")
+
+    @app_commands.command(name="setup_automod_action", description="Auto-punish members when warnings reach a threshold")
+    @app_commands.describe(threshold="Number of warnings to trigger the action", action="Punishment to apply", duration="Timeout duration in minutes (timeout action only)")
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Timeout", value="timeout"),
+        app_commands.Choice(name="Kick", value="kick"),
+        app_commands.Choice(name="Ban", value="ban"),
+        app_commands.Choice(name="Disable", value="disable"),
+    ])
+    @app_commands.checks.has_permissions(administrator=True)
+    async def setup_automod_action(self, interaction: discord.Interaction, threshold: int, action: str, duration: int = 60):
+        if action == "disable":
+            self.bot.db.execute("DELETE FROM automod_actions WHERE guild_id = ?", (interaction.guild.id,))
+            return await interaction.response.send_message("Auto-mod actions disabled.")
+
+        self.bot.db.execute(
+            "INSERT OR REPLACE INTO automod_actions (guild_id, warn_threshold, action, duration_minutes) VALUES (?, ?, ?, ?)",
+            (interaction.guild.id, threshold, action, duration)
+        )
+        msg = f"Auto-mod action set: **{action}** triggers at **{threshold}** warnings."
+        if action == "timeout":
+            msg += f" Duration: **{duration} minutes**."
+        await interaction.response.send_message(msg)
 
     @app_commands.command(name="warnings", description="View warnings for a member")
     @app_commands.describe(member="The member to view warnings for")
@@ -344,6 +396,55 @@ class Moderation(commands.Cog):
             await interaction.response.send_message(f"Deleted warning ID {warning_id}.")
         else:
             await interaction.response.send_message(f"Warning ID {warning_id} not found.", ephemeral=True)
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        if member.bot or before.channel == after.channel:
+            return
+
+        if before.channel is None:
+            embed = discord.Embed(title="Joined Voice", color=discord.Color.green(), timestamp=datetime.datetime.now())
+            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+        elif after.channel is None:
+            embed = discord.Embed(title="Left Voice", color=discord.Color.red(), timestamp=datetime.datetime.now())
+            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed.add_field(name="Channel", value=before.channel.mention, inline=True)
+        else:
+            embed = discord.Embed(title="Moved Voice Channel", color=discord.Color.orange(), timestamp=datetime.datetime.now())
+            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed.add_field(name="From", value=before.channel.mention, inline=True)
+            embed.add_field(name="To", value=after.channel.mention, inline=True)
+
+        await self.log_action(member.guild, embed)
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before, after):
+        if before.bot:
+            return
+
+        if before.nick != after.nick:
+            embed = discord.Embed(title="Nickname Changed", color=discord.Color.blue(), timestamp=datetime.datetime.now())
+            embed.set_author(name=after.name, icon_url=after.display_avatar.url)
+            embed.add_field(name="Before", value=before.nick or before.name, inline=True)
+            embed.add_field(name="After", value=after.nick or after.name, inline=True)
+            await self.log_action(after.guild, embed)
+
+        added_roles = [r for r in after.roles if r not in before.roles]
+        removed_roles = [r for r in before.roles if r not in after.roles]
+
+        if added_roles:
+            embed = discord.Embed(title="Roles Added", color=discord.Color.green(), timestamp=datetime.datetime.now())
+            embed.set_author(name=after.name, icon_url=after.display_avatar.url)
+            embed.add_field(name="Roles", value=", ".join(r.mention for r in added_roles), inline=False)
+            await self.log_action(after.guild, embed)
+
+        if removed_roles:
+            embed = discord.Embed(title="Roles Removed", color=discord.Color.red(), timestamp=datetime.datetime.now())
+            embed.set_author(name=after.name, icon_url=after.display_avatar.url)
+            embed.add_field(name="Roles", value=", ".join(r.mention for r in removed_roles), inline=False)
+            await self.log_action(after.guild, embed)
+
 
 async def setup(bot):
     await bot.add_cog(Moderation(bot))

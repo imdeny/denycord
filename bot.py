@@ -36,7 +36,9 @@ class MyBot(commands.AutoShardedBot):
             'cogs.giveaways',
             'cogs.music',
             'cogs.automod',
-            'cogs.tickets'
+            'cogs.tickets',
+            'cogs.autorole',
+            'cogs.stats'
         ]
         
         for extension in initial_extensions:
