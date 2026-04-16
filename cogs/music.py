@@ -39,8 +39,9 @@ YTDL_OPTIONS = {
     'logtostderr': False,
     'quiet': True,
     'no_warnings': True,
-    'default_search': 'auto',
+    'default_search': 'ytsearch',
     'source_address': '0.0.0.0',
+    'socket_timeout': 30,
 }
 
 FFMPEG_OPTIONS = {
@@ -64,10 +65,15 @@ class YTDLSource(discord.PCMVolumeTransformer):
     @classmethod
     async def from_url(cls, url, *, loop=None, stream=False, requester=None):
         loop = loop or asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+        try:
+            data = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream)),
+                timeout=60.0,
+            )
+        except asyncio.TimeoutError:
+            raise Exception("Search timed out — YouTube may be rate-limiting this server. Try again in a moment.")
 
         if 'entries' in data:
-            # take first item from a playlist
             data = data['entries'][0]
 
         filename = data['url'] if stream else ytdl.prepare_filename(data)
@@ -186,9 +192,12 @@ class Music(commands.Cog):
         channel = interaction.user.voice.channel
         
         if interaction.guild.voice_client is None:
-            await channel.connect()
+            try:
+                await asyncio.wait_for(channel.connect(), timeout=15.0)
+            except asyncio.TimeoutError:
+                return await interaction.followup.send("Timed out trying to join the voice channel. Check my permissions.")
         elif interaction.guild.voice_client.channel != channel:
-             return await interaction.followup.send("I am already in another voice channel.")
+            return await interaction.followup.send("I am already in another voice channel.")
 
         player = self.get_player(await self.bot.get_context(interaction))
 
@@ -347,11 +356,20 @@ class Music(commands.Cog):
     @app_commands.command(name="join", description="Joins your voice channel")
     async def join(self, interaction: discord.Interaction):
         if not interaction.user.voice:
-             return await interaction.response.send_message("You are not in a voice channel.", ephemeral=True)
-        
+            return await interaction.response.send_message("You are not in a voice channel.", ephemeral=True)
+
+        await interaction.response.defer()
         channel = interaction.user.voice.channel
-        await channel.connect()
-        await interaction.response.send_message(f"Joined {channel.mention}")
+
+        if interaction.guild.voice_client:
+            await interaction.guild.voice_client.move_to(channel)
+        else:
+            try:
+                await asyncio.wait_for(channel.connect(), timeout=15.0)
+            except asyncio.TimeoutError:
+                return await interaction.followup.send("Timed out trying to join the voice channel. Check my permissions.")
+
+        await interaction.followup.send(f"Joined {channel.mention}")
 
     @app_commands.command(name="leave", description="Leaves the voice channel")
     async def leave(self, interaction: discord.Interaction):
