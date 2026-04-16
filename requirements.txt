@@ -1,7 +1,5 @@
-discord.py
+discord.py[voice]
 python-dotenv
 yt-dlp
-PyNaCl
-
 Pillow
 chat-exporter
