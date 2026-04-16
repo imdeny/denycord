@@ -116,6 +116,29 @@ class DatabaseManager:
         c.execute('''CREATE TABLE IF NOT EXISTS voice_user_settings
                      (user_id INTEGER PRIMARY KEY, name TEXT)''')
 
+        # --- Backup ---
+        c.execute('''CREATE TABLE IF NOT EXISTS backup_settings
+                     (guild_id INTEGER PRIMARY KEY, channel_id INTEGER,
+                      interval_hours INTEGER, last_backup_at REAL)''')
+
+        # --- Reminders ---
+        c.execute('''CREATE TABLE IF NOT EXISTS reminders
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      user_id INTEGER, guild_id INTEGER, channel_id INTEGER,
+                      message TEXT, fire_at REAL, deliver_dm INTEGER)''')
+
+        # --- AFK ---
+        c.execute('''CREATE TABLE IF NOT EXISTS afk
+                     (user_id INTEGER, guild_id INTEGER, reason TEXT, timestamp REAL,
+                      PRIMARY KEY (user_id, guild_id))''')
+
+        # --- Birthdays ---
+        c.execute('''CREATE TABLE IF NOT EXISTS birthday_settings
+                     (guild_id INTEGER PRIMARY KEY, channel_id INTEGER, role_id INTEGER)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS birthdays
+                     (user_id INTEGER, guild_id INTEGER, month INTEGER, day INTEGER,
+                      PRIMARY KEY (user_id, guild_id))''')
+
         conn.commit()
         conn.close()
         self.logger.info("Database initialized and tables verified.")

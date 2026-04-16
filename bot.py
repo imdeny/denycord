@@ -38,7 +38,11 @@ class MyBot(commands.AutoShardedBot):
             'cogs.automod',
             'cogs.tickets',
             'cogs.autorole',
-            'cogs.stats'
+            'cogs.stats',
+            'cogs.birthdays',
+            'cogs.afk',
+            'cogs.reminders',
+            'cogs.backup'
         ]
         
         for extension in initial_extensions:
