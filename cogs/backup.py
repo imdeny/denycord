@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 import json
 import io
 import os
+import logging
 
 
 class Backup(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.db = bot.db
+        self.logger = logging.getLogger("Backup")
         os.makedirs("backups", exist_ok=True)
         self.scheduled_backup_loop.start()
 
@@ -324,8 +326,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO welcome_config (guild_id, channel_id, message_text) VALUES (?, ?, ?)",
                     (guild_id, w.get("channel_id"), w.get("message_text")),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore welcome config: {e}")
 
         try:
             for role_id in cfg.get("auto_roles", []):
@@ -333,8 +335,8 @@ class Backup(commands.Cog):
                     "INSERT OR IGNORE INTO auto_roles (guild_id, role_id) VALUES (?, ?)",
                     (guild_id, role_id),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore auto_roles: {e}")
 
         try:
             for lr in cfg.get("level_roles", []):
@@ -342,8 +344,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO level_roles (guild_id, level, role_id) VALUES (?, ?, ?)",
                     (guild_id, lr["level"], lr["role_id"]),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore level_roles: {e}")
 
         try:
             if "automod" in cfg:
@@ -355,8 +357,8 @@ class Backup(commands.Cog):
                     (guild_id, a.get("bad_words"), a.get("anti_invite"), a.get("anti_links"),
                      a.get("anti_caps"), a.get("max_mentions"), a.get("max_emojis"), a.get("exempt_roles")),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore automod settings: {e}")
 
         try:
             if "automod_actions" in cfg:
@@ -365,8 +367,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO automod_actions (guild_id, warn_threshold, action, duration_minutes) VALUES (?, ?, ?, ?)",
                     (guild_id, aa["warn_threshold"], aa["action"], aa["duration_minutes"]),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore automod_actions: {e}")
 
         try:
             if "mod_logs_channel_id" in cfg:
@@ -374,8 +376,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)",
                     (guild_id, cfg["mod_logs_channel_id"]),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore mod_logs: {e}")
 
         try:
             for s in cfg.get("stats_channels", []):
@@ -383,8 +385,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO stats_channels (guild_id, stat_type, channel_id) VALUES (?, ?, ?)",
                     (guild_id, s["stat_type"], s["channel_id"]),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore stats_channels: {e}")
 
         try:
             if "birthday_settings" in cfg:
@@ -393,8 +395,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO birthday_settings (guild_id, channel_id, role_id) VALUES (?, ?, ?)",
                     (guild_id, b.get("channel_id"), b.get("role_id")),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore birthday_settings: {e}")
 
         try:
             for b in cfg.get("birthdays", []):
@@ -402,8 +404,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO birthdays (user_id, guild_id, month, day) VALUES (?, ?, ?, ?)",
                     (b["user_id"], guild_id, b["month"], b["day"]),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore birthdays: {e}")
 
         try:
             if "voice_hub_id" in cfg:
@@ -411,8 +413,8 @@ class Backup(commands.Cog):
                     "INSERT OR REPLACE INTO voice_hubs (guild_id, hub_id) VALUES (?, ?)",
                     (guild_id, cfg["voice_hub_id"]),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore voice_hubs: {e}")
 
         try:
             for t in cfg.get("ticket_templates", []):
@@ -420,8 +422,8 @@ class Backup(commands.Cog):
                     "INSERT OR IGNORE INTO ticket_templates (guild_id, name, content) VALUES (?, ?, ?)",
                     (guild_id, t["name"], t["content"]),
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.warning(f"[restore:{guild_id}] Failed to restore ticket_templates: {e}")
 
     # -------------------------------------------------------------------------
     # Commands

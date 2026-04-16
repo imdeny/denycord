@@ -39,17 +39,16 @@ class ReactionRoles(commands.Cog):
     async def rr_remove(self, interaction: discord.Interaction, message_id: str, emoji: str):
         try:
             msg_id = int(message_id)
-            message = await interaction.channel.fetch_message(msg_id)
-        except (ValueError, discord.NotFound):
-            pass
+        except ValueError:
+            return await interaction.response.send_message("Invalid message ID.", ephemeral=True)
 
-        c = self.bot.db.execute("DELETE FROM reaction_roles WHERE message_id = ? AND emoji = ?", (message_id, emoji))
-        
+        c = self.bot.db.execute("DELETE FROM reaction_roles WHERE message_id = ? AND emoji = ?", (msg_id, emoji))
+
         if c.rowcount > 0:
             try:
-                if 'message' in locals():
-                    await message.clear_reaction(emoji)
-            except:
+                message = await interaction.channel.fetch_message(msg_id)
+                await message.clear_reaction(emoji)
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 pass
             await interaction.response.send_message(f"Removed reaction role for {emoji}.", ephemeral=True)
         else:

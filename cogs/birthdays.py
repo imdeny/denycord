@@ -115,14 +115,20 @@ class Birthdays(commands.Cog):
             if guild is None:
                 continue
             role = guild.get_role(role_id)
-            if role is None:
+            if role is None or not role.members:
                 continue
+
+            # Batch query: fetch all members in the role whose birthday IS today
+            member_ids = [m.id for m in role.members]
+            placeholders = ",".join("?" * len(member_ids))
+            rows = self.db.fetchall(
+                f"SELECT user_id FROM birthdays WHERE guild_id = ? AND month = ? AND day = ? AND user_id IN ({placeholders})",
+                (guild_id, current_month, current_day, *member_ids),
+            )
+            today_birthday_ids = {row[0] for row in rows}
+
             for member in role.members:
-                row = self.db.fetchone(
-                    "SELECT month, day FROM birthdays WHERE user_id = ? AND guild_id = ?",
-                    (member.id, guild_id),
-                )
-                if row is None or (row[0] != current_month or row[1] != current_day):
+                if member.id not in today_birthday_ids:
                     try:
                         await member.remove_roles(role, reason="Birthday over")
                     except discord.Forbidden:

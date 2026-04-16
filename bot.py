@@ -80,6 +80,7 @@ class MyBot(commands.AutoShardedBot):
 bot = MyBot()
 
 @bot.command()
+@commands.is_owner()
 async def sync(ctx):
     print("Syncing commands...")
     try:

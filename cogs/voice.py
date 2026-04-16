@@ -154,7 +154,7 @@ class KickSelectView(discord.ui.View):
 class Voice(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.temp_channels = [] # List of temp channel IDs to track for deletion
+        self.temp_channels: set[int] = set()  # Set of temp channel IDs to track for deletion
         # Caches
         self.hub_cache = {} 
         self.user_settings_cache = {}
@@ -227,7 +227,7 @@ class Voice(commands.Cog):
                     category=category,
                     overwrites=overwrites
                 )
-                self.temp_channels.append(new_channel.id)
+                self.temp_channels.add(new_channel.id)
                 await member.move_to(new_channel)
                 
                 embed = discord.Embed(
@@ -246,11 +246,10 @@ class Voice(commands.Cog):
             if len(before.channel.members) == 0:
                 try:
                     await before.channel.delete()
-                    self.temp_channels.remove(before.channel.id)
                 except Exception as e:
                     print(f"Error deleting channel: {e}")
-                    if before.channel.id in self.temp_channels:
-                        self.temp_channels.remove(before.channel.id)
+                finally:
+                    self.temp_channels.discard(before.channel.id)
 
 async def setup(bot):
     await bot.add_cog(Voice(bot))

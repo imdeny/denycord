@@ -1,50 +1,12 @@
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
-from datetime import datetime, timezone, timedelta
-import re
+from datetime import datetime, timezone
+from utils.helpers import parse_duration, format_duration
 
 
 MAX_REMINDERS_PER_USER = 5
 MAX_DURATION_SECONDS = 365 * 24 * 3600  # 1 year
-
-DURATION_REGEX = re.compile(
-    r"(?:(\d+)\s*y(?:ears?)?)?"
-    r"\s*(?:(\d+)\s*w(?:eeks?)?)?"
-    r"\s*(?:(\d+)\s*d(?:ays?)?)?"
-    r"\s*(?:(\d+)\s*h(?:ours?)?)?"
-    r"\s*(?:(\d+)\s*m(?:in(?:utes?)?)?)?"
-    r"\s*(?:(\d+)\s*s(?:ec(?:onds?)?)?)?",
-    re.IGNORECASE,
-)
-
-
-def parse_duration(text: str) -> int | None:
-    """Parse a duration string like '2h30m' into total seconds. Returns None if invalid."""
-    text = text.strip()
-    match = DURATION_REGEX.fullmatch(text)
-    if not match or not any(match.groups()):
-        return None
-    years, weeks, days, hours, minutes, seconds = (int(v) if v else 0 for v in match.groups())
-    total = (
-        years * 365 * 24 * 3600
-        + weeks * 7 * 24 * 3600
-        + days * 24 * 3600
-        + hours * 3600
-        + minutes * 60
-        + seconds
-    )
-    return total if total > 0 else None
-
-
-def format_duration(seconds: int) -> str:
-    parts = []
-    for unit, label in [(86400 * 365, "year"), (86400 * 7, "week"), (86400, "day"), (3600, "hour"), (60, "minute"), (1, "second")]:
-        if seconds >= unit:
-            val = seconds // unit
-            parts.append(f"{val} {label}{'s' if val != 1 else ''}")
-            seconds %= unit
-    return ", ".join(parts) if parts else "0 seconds"
 
 
 def format_timestamp(ts: float) -> str:

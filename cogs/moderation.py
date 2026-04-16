@@ -1,7 +1,8 @@
 import discord
 from discord.ext import commands
 from discord import app_commands
-import datetime
+from datetime import timedelta
+from utils.helpers import make_mod_embed
 
 class Moderation(commands.Cog):
     def __init__(self, bot):
@@ -9,7 +10,6 @@ class Moderation(commands.Cog):
 
     async def log_action(self, guild, embed):
         result = self.bot.db.fetchone("SELECT channel_id FROM mod_logs WHERE guild_id = ?", (guild.id,))
-        
         if result:
             channel = guild.get_channel(result[0])
             if channel:
@@ -20,35 +20,32 @@ class Moderation(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def setup_logs(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
         if channel:
-            self.bot.db.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
+            self.bot.db.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)",
                       (interaction.guild.id, channel.id))
             await interaction.response.send_message(f"Moderation logs will be sent to {channel.mention}.")
         else:
-            # Create a new channel
             overwrites = {
                 interaction.guild.default_role: discord.PermissionOverwrite(read_messages=False),
                 interaction.guild.me: discord.PermissionOverwrite(read_messages=True)
             }
             try:
                 channel = await interaction.guild.create_text_channel("mod-logs", overwrites=overwrites, reason="Setup mod logs")
-                self.bot.db.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)", 
+                self.bot.db.execute("INSERT OR REPLACE INTO mod_logs (guild_id, channel_id) VALUES (?, ?)",
                           (interaction.guild.id, channel.id))
                 await interaction.response.send_message(f"Created {channel.mention} and set it as the logging channel.")
             except discord.Forbidden:
-                 await interaction.response.send_message("I do not have permission to create channels.", ephemeral=True)
+                await interaction.response.send_message("I do not have permission to create channels.", ephemeral=True)
 
     # Listeners for logging
     @commands.Cog.listener()
     async def on_message_delete(self, message):
         if not message.guild or message.author.bot:
             return
-        
-        embed = discord.Embed(title="Message Deleted", color=discord.Color.red(), timestamp=datetime.datetime.now())
-        embed.set_author(name=message.author.name, icon_url=message.author.display_avatar.url)
+
+        embed = make_mod_embed("Message Deleted", discord.Color.red(), message.author)
         embed.add_field(name="Content", value=message.content if message.content else "*Image/Embed*", inline=False)
         embed.add_field(name="Channel", value=message.channel.mention, inline=True)
         embed.add_field(name="ID", value=message.id, inline=True)
-        
         await self.log_action(message.guild, embed)
 
     @commands.Cog.listener()
@@ -56,26 +53,22 @@ class Moderation(commands.Cog):
         if not before.guild or before.author.bot or before.content == after.content:
             return
 
-        embed = discord.Embed(title="Message Edited", color=discord.Color.orange(), timestamp=datetime.datetime.now())
-        embed.set_author(name=before.author.name, icon_url=before.author.display_avatar.url)
+        embed = make_mod_embed("Message Edited", discord.Color.orange(), before.author)
         embed.add_field(name="Before", value=before.content if before.content else "*Image/Embed*", inline=False)
         embed.add_field(name="After", value=after.content if after.content else "*Image/Embed*", inline=False)
         embed.add_field(name="Channel", value=before.channel.mention, inline=True)
         embed.add_field(name="Link", value=f"[Jump to Message]({after.jump_url})", inline=True)
-
         await self.log_action(before.guild, embed)
-    
+
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
-        embed = discord.Embed(title="Member Banned", color=discord.Color.dark_red(), timestamp=datetime.datetime.now())
-        embed.set_author(name=user.name, icon_url=user.display_avatar.url)
+        embed = make_mod_embed("Member Banned", discord.Color.dark_red(), user)
         embed.add_field(name="User ID", value=user.id, inline=False)
         await self.log_action(guild, embed)
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild, user):
-        embed = discord.Embed(title="Member Unbanned", color=discord.Color.green(), timestamp=datetime.datetime.now())
-        embed.set_author(name=user.name, icon_url=user.display_avatar.url)
+        embed = make_mod_embed("Member Unbanned", discord.Color.green(), user)
         embed.add_field(name="User ID", value=user.id, inline=False)
         await self.log_action(guild, embed)
 
@@ -86,18 +79,16 @@ class Moderation(commands.Cog):
         if member == interaction.user:
             await interaction.response.send_message("You cannot kick yourself.", ephemeral=True)
             return
-        
+
         try:
             await member.kick(reason=reason)
             await interaction.response.send_message(f"Kicked {member.mention} for reason: {reason}")
-            
-            # Log action
-            embed = discord.Embed(title="Member Kicked", color=discord.Color.red(), timestamp=datetime.datetime.now())
-            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+
+            embed = make_mod_embed("Member Kicked", discord.Color.red(), member)
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             embed.add_field(name="Reason", value=reason, inline=True)
             await self.log_action(interaction.guild, embed)
-            
+
         except discord.Forbidden:
             await interaction.response.send_message("I do not have permission to kick this user.", ephemeral=True)
         except Exception as e:
@@ -114,10 +105,8 @@ class Moderation(commands.Cog):
         try:
             await member.ban(reason=reason)
             await interaction.response.send_message(f"Banned {member.mention} for reason: {reason}")
-            
-            # Log action
-            embed = discord.Embed(title="Member Banned", color=discord.Color.dark_red(), timestamp=datetime.datetime.now())
-            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+
+            embed = make_mod_embed("Member Banned", discord.Color.dark_red(), member)
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             embed.add_field(name="Reason", value=reason, inline=True)
             await self.log_action(interaction.guild, embed)
@@ -134,7 +123,7 @@ class Moderation(commands.Cog):
         if amount < 1:
             await interaction.response.send_message("Amount must be at least 1.", ephemeral=True)
             return
-        
+
         await interaction.response.defer(ephemeral=True)
         deleted = await interaction.channel.purge(limit=amount)
         await interaction.followup.send(f"Deleted {len(deleted)} messages.", ephemeral=True)
@@ -146,15 +135,12 @@ class Moderation(commands.Cog):
         if member == interaction.user:
             await interaction.response.send_message("You cannot timeout yourself.", ephemeral=True)
             return
-        
+
         try:
-            from datetime import timedelta
             await member.timeout(timedelta(minutes=duration), reason=reason)
             await interaction.response.send_message(f"Timed out {member.mention} for {duration} minutes. Reason: {reason}")
-            
-            # Log action
-            embed = discord.Embed(title="Member Timed Out", color=discord.Color.orange(), timestamp=datetime.datetime.now())
-            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+
+            embed = make_mod_embed("Member Timed Out", discord.Color.orange(), member)
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             embed.add_field(name="Duration", value=f"{duration} minutes", inline=True)
             embed.add_field(name="Reason", value=reason, inline=True)
@@ -172,10 +158,8 @@ class Moderation(commands.Cog):
         try:
             await member.timeout(None, reason=reason)
             await interaction.response.send_message(f"Removed timeout from {member.mention}.")
-            
-            # Log action
-            embed = discord.Embed(title="Timeout Removed", color=discord.Color.green(), timestamp=datetime.datetime.now())
-            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+
+            embed = make_mod_embed("Timeout Removed", discord.Color.green(), member)
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             await self.log_action(interaction.guild, embed)
 
@@ -192,10 +176,8 @@ class Moderation(commands.Cog):
             user = await self.bot.fetch_user(user_id)
             await interaction.guild.unban(user, reason=reason)
             await interaction.response.send_message(f"Unbanned {user.mention}.")
-            
-            # Log action
-            embed = discord.Embed(title="Member Unbanned", color=discord.Color.green(), timestamp=datetime.datetime.now())
-            embed.set_author(name=user.name, icon_url=user.display_avatar.url)
+
+            embed = make_mod_embed("Member Unbanned", discord.Color.green(), user)
             embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
             embed.add_field(name="Reason", value=reason, inline=True)
             await self.log_action(interaction.guild, embed)
@@ -236,7 +218,7 @@ class Moderation(commands.Cog):
         if seconds < 0 or seconds > 21600:
             await interaction.response.send_message("Slowmode must be between 0 and 21600 seconds.", ephemeral=True)
             return
-        
+
         try:
             await interaction.channel.edit(slowmode_delay=seconds)
             if seconds == 0:
@@ -288,19 +270,20 @@ class Moderation(commands.Cog):
     @app_commands.describe(member="The member to warn", reason="The reason for the warning")
     @app_commands.checks.has_permissions(moderate_members=True)
     async def warn(self, interaction: discord.Interaction, member: discord.Member, reason: str):
-        self.bot.db.execute("INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp) VALUES (?, ?, ?, ?, ?)",
-                  (member.id, interaction.guild.id, interaction.user.id, reason, datetime.datetime.now()))
+        from datetime import datetime, timezone
+        self.bot.db.execute(
+            "INSERT INTO warnings (user_id, guild_id, moderator_id, reason, timestamp) VALUES (?, ?, ?, ?, ?)",
+            (member.id, interaction.guild.id, interaction.user.id, reason, datetime.now(timezone.utc)),
+        )
 
         warn_count = self.bot.db.fetchone(
             "SELECT COUNT(*) FROM warnings WHERE user_id = ? AND guild_id = ?",
-            (member.id, interaction.guild.id)
+            (member.id, interaction.guild.id),
         )[0]
 
         await interaction.response.send_message(f"⚠️ Warned {member.mention} for: {reason} (Warning {warn_count})")
 
-        # Log action
-        embed = discord.Embed(title="Member Warned", color=discord.Color.yellow(), timestamp=datetime.datetime.now())
-        embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+        embed = make_mod_embed("Member Warned", discord.Color.yellow(), member)
         embed.add_field(name="Moderator", value=interaction.user.mention, inline=True)
         embed.add_field(name="Reason", value=reason, inline=True)
         embed.add_field(name="Total Warnings", value=str(warn_count), inline=True)
@@ -314,7 +297,7 @@ class Moderation(commands.Cog):
         # Check auto-mod action threshold
         action_config = self.bot.db.fetchone(
             "SELECT warn_threshold, action, duration_minutes FROM automod_actions WHERE guild_id = ?",
-            (interaction.guild.id,)
+            (interaction.guild.id,),
         )
         if action_config:
             threshold, action, duration = action_config
@@ -328,7 +311,6 @@ class Moderation(commands.Cog):
                         await member.ban(reason=auto_reason)
                         await interaction.channel.send(f"Auto-banned {member.mention} for reaching {threshold} warnings.")
                     elif action == "timeout":
-                        from datetime import timedelta
                         await member.timeout(timedelta(minutes=duration), reason=auto_reason)
                         await interaction.channel.send(f"Auto-timed out {member.mention} for {duration} minutes (reached {threshold} warnings).")
                 except discord.Forbidden:
@@ -350,7 +332,7 @@ class Moderation(commands.Cog):
 
         self.bot.db.execute(
             "INSERT OR REPLACE INTO automod_actions (guild_id, warn_threshold, action, duration_minutes) VALUES (?, ?, ?, ?)",
-            (interaction.guild.id, threshold, action, duration)
+            (interaction.guild.id, threshold, action, duration),
         )
         msg = f"Auto-mod action set: **{action}** triggers at **{threshold}** warnings."
         if action == "timeout":
@@ -360,20 +342,21 @@ class Moderation(commands.Cog):
     @app_commands.command(name="warnings", description="View warnings for a member")
     @app_commands.describe(member="The member to view warnings for")
     async def warnings(self, interaction: discord.Interaction, member: discord.Member):
-        results = self.bot.db.fetchall("SELECT id, moderator_id, reason, timestamp FROM warnings WHERE user_id = ? AND guild_id = ?", 
-                  (member.id, interaction.guild.id))
-        
+        results = self.bot.db.fetchall(
+            "SELECT id, moderator_id, reason, timestamp FROM warnings WHERE user_id = ? AND guild_id = ?",
+            (member.id, interaction.guild.id),
+        )
+
         if not results:
             return await interaction.response.send_message(f"{member.mention} has no warnings.", ephemeral=True)
-            
+
         embed = discord.Embed(title=f"Warnings - {member.name}", color=discord.Color.orange())
-        
         for warning_id, mod_id, reason, timestamp in results:
             mod = interaction.guild.get_member(mod_id)
             mod_name = mod.name if mod else f"User {mod_id}"
             date_str = str(timestamp)[:16]
             embed.add_field(name=f"ID: {warning_id} | {date_str}", value=f"**Mod:** {mod_name}\n**Reason:** {reason}", inline=False)
-            
+
         await interaction.response.send_message(embed=embed)
 
     @app_commands.command(name="clearwarnings", description="Clear all warnings for a member")
@@ -381,18 +364,14 @@ class Moderation(commands.Cog):
     @app_commands.checks.has_permissions(administrator=True)
     async def clearwarnings(self, interaction: discord.Interaction, member: discord.Member):
         c = self.bot.db.execute("DELETE FROM warnings WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
-        deleted_count = c.rowcount
-        
-        await interaction.response.send_message(f"Cleared {deleted_count} warnings for {member.mention}.")
+        await interaction.response.send_message(f"Cleared {c.rowcount} warnings for {member.mention}.")
 
     @app_commands.command(name="delwarn", description="Delete a specific warning by ID")
     @app_commands.describe(warning_id="The ID of the warning to delete")
     @app_commands.checks.has_permissions(administrator=True)
     async def delwarn(self, interaction: discord.Interaction, warning_id: int):
         c = self.bot.db.execute("DELETE FROM warnings WHERE id = ? AND guild_id = ?", (warning_id, interaction.guild.id))
-        deleted_count = c.rowcount
-        
-        if deleted_count > 0:
+        if c.rowcount > 0:
             await interaction.response.send_message(f"Deleted warning ID {warning_id}.")
         else:
             await interaction.response.send_message(f"Warning ID {warning_id} not found.", ephemeral=True)
@@ -403,16 +382,13 @@ class Moderation(commands.Cog):
             return
 
         if before.channel is None:
-            embed = discord.Embed(title="Joined Voice", color=discord.Color.green(), timestamp=datetime.datetime.now())
-            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed = make_mod_embed("Joined Voice", discord.Color.green(), member)
             embed.add_field(name="Channel", value=after.channel.mention, inline=True)
         elif after.channel is None:
-            embed = discord.Embed(title="Left Voice", color=discord.Color.red(), timestamp=datetime.datetime.now())
-            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed = make_mod_embed("Left Voice", discord.Color.red(), member)
             embed.add_field(name="Channel", value=before.channel.mention, inline=True)
         else:
-            embed = discord.Embed(title="Moved Voice Channel", color=discord.Color.orange(), timestamp=datetime.datetime.now())
-            embed.set_author(name=member.name, icon_url=member.display_avatar.url)
+            embed = make_mod_embed("Moved Voice Channel", discord.Color.orange(), member)
             embed.add_field(name="From", value=before.channel.mention, inline=True)
             embed.add_field(name="To", value=after.channel.mention, inline=True)
 
@@ -424,8 +400,7 @@ class Moderation(commands.Cog):
             return
 
         if before.nick != after.nick:
-            embed = discord.Embed(title="Nickname Changed", color=discord.Color.blue(), timestamp=datetime.datetime.now())
-            embed.set_author(name=after.name, icon_url=after.display_avatar.url)
+            embed = make_mod_embed("Nickname Changed", discord.Color.blue(), after)
             embed.add_field(name="Before", value=before.nick or before.name, inline=True)
             embed.add_field(name="After", value=after.nick or after.name, inline=True)
             await self.log_action(after.guild, embed)
@@ -434,14 +409,12 @@ class Moderation(commands.Cog):
         removed_roles = [r for r in before.roles if r not in after.roles]
 
         if added_roles:
-            embed = discord.Embed(title="Roles Added", color=discord.Color.green(), timestamp=datetime.datetime.now())
-            embed.set_author(name=after.name, icon_url=after.display_avatar.url)
+            embed = make_mod_embed("Roles Added", discord.Color.green(), after)
             embed.add_field(name="Roles", value=", ".join(r.mention for r in added_roles), inline=False)
             await self.log_action(after.guild, embed)
 
         if removed_roles:
-            embed = discord.Embed(title="Roles Removed", color=discord.Color.red(), timestamp=datetime.datetime.now())
-            embed.set_author(name=after.name, icon_url=after.display_avatar.url)
+            embed = make_mod_embed("Roles Removed", discord.Color.red(), after)
             embed.add_field(name="Roles", value=", ".join(r.mention for r in removed_roles), inline=False)
             await self.log_action(after.guild, embed)
 
