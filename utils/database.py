@@ -60,7 +60,38 @@ class DatabaseManager:
                       anti_caps INTEGER,
                       max_mentions INTEGER,
                       max_emojis INTEGER,
-                      exempt_roles TEXT)''')
+                      exempt_roles TEXT,
+                      log_channel_id INTEGER,
+                      anti_spam INTEGER DEFAULT 0,
+                      spam_count INTEGER DEFAULT 5,
+                      spam_seconds INTEGER DEFAULT 5,
+                      min_account_age INTEGER DEFAULT 0,
+                      anti_raid INTEGER DEFAULT 0,
+                      raid_count INTEGER DEFAULT 10,
+                      raid_seconds INTEGER DEFAULT 10,
+                      anti_repeat INTEGER DEFAULT 0,
+                      repeat_count INTEGER DEFAULT 3,
+                      punishments TEXT,
+                      exempt_channels TEXT)''')
+        # Migrate existing installs — add new columns if missing
+        for col, definition in [
+            ("log_channel_id", "INTEGER"),
+            ("anti_spam", "INTEGER DEFAULT 0"),
+            ("spam_count", "INTEGER DEFAULT 5"),
+            ("spam_seconds", "INTEGER DEFAULT 5"),
+            ("min_account_age", "INTEGER DEFAULT 0"),
+            ("anti_raid", "INTEGER DEFAULT 0"),
+            ("raid_count", "INTEGER DEFAULT 10"),
+            ("raid_seconds", "INTEGER DEFAULT 10"),
+            ("anti_repeat", "INTEGER DEFAULT 0"),
+            ("repeat_count", "INTEGER DEFAULT 3"),
+            ("punishments", "TEXT"),
+            ("exempt_channels", "TEXT"),
+        ]:
+            try:
+                c.execute(f"ALTER TABLE automod_settings ADD COLUMN {col} {definition}")
+            except Exception:
+                pass
 
         # --- Tickets ---
         c.execute('''CREATE TABLE IF NOT EXISTS ticket_settings
